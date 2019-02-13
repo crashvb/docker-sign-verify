@@ -20,6 +20,8 @@ from .utils import (
     to_image_name
 )
 
+LOGGER = logging.getLogger(__name__)
+
 # Bug Fix: There isn't anything we can do about mis-configured remote certificates ...
 urllib3.disable_warnings(urllib3.exceptions.SecurityWarning)
 

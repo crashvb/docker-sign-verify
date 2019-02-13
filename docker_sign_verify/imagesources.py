@@ -45,6 +45,8 @@ from .utils import (
     xellipsis,
     FormattedSHA256)
 
+LOGGER = logging.getLogger(__name__)
+
 
 class ImageSource(abc.ABC):
     """
@@ -117,18 +119,18 @@ class ImageSource(abc.ABC):
         """
 
         # Retrieve the image configuration digest and layers identifiers from the manifest ...
-        logging.info("Verifying Integrity: %s ...", image_name)
+        LOGGER.info("Verifying Integrity: %s ...", image_name)
         manifest = self.get_manifest(image_name)
         config_digest = manifest.get_config_digest(image_name)
-        logging.debug("    config digest: %s", xellipsis(config_digest))
+        LOGGER.debug("    config digest: %s", xellipsis(config_digest))
         manifest_layers = manifest.get_layers(image_name)
-        logging.debug("    manifest layers:\n\t\t\t%s", "\n\t\t\t".join([xellipsis(l) for l in manifest_layers]))
+        LOGGER.debug("    manifest layers:\n\t\t\t%s", "\n\t\t\t".join([xellipsis(l) for l in manifest_layers]))
 
         # Retrieve the image layers from the image configuration ...
         image_config = self.get_image_config(image_name)
         must_be_equal(config_digest, image_config.get_config_digest(), "Image config digest mismatch (1)")
         image_layers = image_config.get_image_layers()
-        logging.debug("    image layers:\n\t\t\t%s", "\n\t\t\t".join([xellipsis(l) for l in image_layers]))
+        LOGGER.debug("    image layers:\n\t\t\t%s", "\n\t\t\t".join([xellipsis(l) for l in image_layers]))
 
         # Quick check: Ensure that the layer counts are consistent
         must_be_equal(len(manifest_layers), len(image_layers), "Layer count mismatch")
@@ -286,14 +288,14 @@ class ImageSource(abc.ABC):
         image_config = self.verify_image_integrity(image_name)["image_config"]
 
         # Verify image signatures ...
-        logging.info("Verifying Signature(s): %s ...", image_name)
-        logging.debug("    config digest (signed): %s", xellipsis(image_config.get_config_digest()))
+        LOGGER.info("Verifying Signature(s): %s ...", image_name)
+        LOGGER.debug("    config digest (signed): %s", xellipsis(image_config.get_config_digest()))
         data = image_config.verify_signatures()
         signature_data = data["signature_data"]
-        logging.debug("    config digest (unsigned): %s", xellipsis(signature_data["original_config"]))
+        LOGGER.debug("    config digest (unsigned): %s", xellipsis(signature_data["original_config"]))
 
         # List the image signatures ...
-        logging.debug("    signtures:")
+        LOGGER.debug("    signtures:")
         for result in data["results"]:
             # pylint: disable=protected-access
             if isinstance(result, gnupg._parsers.Verify):
@@ -302,24 +304,24 @@ class ImageSource(abc.ABC):
                         "Verification failed for signature with key_id '{0}': {1}".format(
                             result.key_id,
                             result.status))
-                logging.debug(
+                LOGGER.debug(
                     "        Signature made %s using key ID %s",
                     time.strftime(
                         "%Y-%m-%d %H:%M:%S",
                         time.gmtime(float(result.sig_timestamp))),
                     result.key_id)
-                logging.debug("            %s", result.username)
+                LOGGER.debug("            %s", result.username)
             elif result.get("type", None) == "pki":
                 if not result["valid"]:
                     raise Exception(
                         "Verification failed for signature using cert: {0}".format(
                             result["keypair_path"]))
                 # TODO: Add better debug logging
-                logging.debug("        Signature made using undetailed PKI keypair.")
+                LOGGER.debug("        Signature made using undetailed PKI keypair.")
             else:
-                logging.error("Unknown Signature Type: %s", type(result))
+                LOGGER.error("Unknown Signature Type: %s", type(result))
 
-        logging.info("Signature check passed.")
+        LOGGER.info("Signature check passed.")
 
 
 class ArchiveImageSource(ImageSource):
@@ -419,12 +421,12 @@ class ArchiveImageSource(ImageSource):
 
     def sign_image(self, signer: Signer, src_image_name: ImageName, dest_image_source: ImageSource,
                    dest_image_name: ImageName):
-        logging.info("Signing: %s ...", src_image_name)
+        LOGGER.info("Signing: %s ...", src_image_name)
 
         # Generate a signed image configuration ...
         data = self._sign_image_config(signer, src_image_name)
         manifest = data["verify_image_data"]["manifest"]
-        logging.debug("    Signature:\n%s", data["signature_value"])
+        LOGGER.debug("    Signature:\n%s", data["signature_value"])
         image_config = data["image_config"]
 
         # Replicate all of the image layers
@@ -443,7 +445,7 @@ class ArchiveImageSource(ImageSource):
 
         # Push the new image configuration ...
         config_digest_signed = image_config.get_config_digest()
-        logging.debug("    config digest (signed): %s", config_digest_signed)
+        LOGGER.debug("    config digest (signed): %s", config_digest_signed)
         dest_image_source.put_image_config(dest_image_name, image_config)
 
         # Generate a new archive manifest, and push ...
@@ -466,7 +468,7 @@ class ArchiveImageSource(ImageSource):
             raise RuntimeError("Unknown derived class: {0}".format(
                 type(dest_image_source)))
 
-        logging.info("Created new image: %s", dest_image_name)
+        LOGGER.info("Created new image: %s", dest_image_name)
 
         return data
 
@@ -488,7 +490,7 @@ class ArchiveImageSource(ImageSource):
             must_be_equal(data["image_layers"][i], data_uncompressed["digest"],
                           "Archive layer[{0}] digest mismatch".format(i))
 
-        logging.info("Integrity check passed.")
+        LOGGER.info("Integrity check passed.")
 
         return {
             "image_config": data["image_config"],
@@ -553,7 +555,7 @@ class RegistryV2ImageSource(ImageSource):
         result = None
 
         if not self.credentials and self.credentials_store:
-            logging.debug("Using credentials store: %s", self.credentials_store)
+            LOGGER.debug("Using credentials store: %s", self.credentials_store)
 
             # TODO: Add support for secure providers:
             #       https://docs.docker.com/engine/reference/commandline/login/#credentials-store
@@ -725,7 +727,7 @@ class RegistryV2ImageSource(ImageSource):
     def get_manifest(self, image_name: ImageName = None) -> Manifest:
         endpoint = image_name.endpoint
         if not endpoint:
-            logging.warning("Performing registry operation on unqualified image name: %s", image_name)
+            LOGGER.warning("Performing registry operation on unqualified image name: %s", image_name)
             endpoint = RegistryV2ImageSource.DEFAULT_REGISTRY_ENDPOINT
 
         headers = self._get_request_headers(endpoint, {"Accept": RegistryV2ImageSource.MANIFEST_MIME_TYPE})
@@ -782,12 +784,12 @@ class RegistryV2ImageSource(ImageSource):
 
     def sign_image(self, signer: Signer, src_image_name: ImageName, dest_image_source: ImageSource,
                    dest_image_name: ImageName):
-        logging.info("Signing: %s ...", src_image_name)
+        LOGGER.info("Signing: %s ...", src_image_name)
 
         # Generate a signed image configuration ...
         data = self._sign_image_config(signer, src_image_name)
         manifest = data["verify_image_data"]["manifest"]
-        logging.debug("    Signature:\n%s", data["signature_value"])
+        LOGGER.debug("    Signature:\n%s", data["signature_value"])
         image_config = data["image_config"]
 
         # Replicate all of the image layers
@@ -802,7 +804,7 @@ class RegistryV2ImageSource(ImageSource):
 
         # Push the new image configuration ...
         config_digest_signed = image_config.get_config_digest()
-        logging.debug("    config digest (signed): %s", config_digest_signed)
+        LOGGER.debug("    config digest (signed): %s", config_digest_signed)
         dest_image_source.put_image_config(dest_image_name, image_config)
 
         # Generate a new registry manifest, and push ...
@@ -818,12 +820,12 @@ class RegistryV2ImageSource(ImageSource):
         else:
             raise RuntimeError("Unknown derived class: {0}".format(type(dest_image_source)))
 
-        logging.info("Created new image: %s", dest_image_name)
+        LOGGER.info("Created new image: %s", dest_image_name)
 
         return data
 
     def unsign_image(self, src_image_name: ImageName, dest_image_source, dest_image_name: ImageName):
-        logging.info("Unsigning: %s ...", src_image_name)
+        LOGGER.info("Unsigning: %s ...", src_image_name)
 
         # Generate an unsigned image configuration ...
         data = self._unsign_image_config(src_image_name)
@@ -842,7 +844,7 @@ class RegistryV2ImageSource(ImageSource):
 
         # Push the new image configuration ...
         config_digest_unsigned = image_config.get_config_digest()
-        logging.debug("    config digest (unsigned): %s", config_digest_unsigned)
+        LOGGER.debug("    config digest (unsigned): %s", config_digest_unsigned)
         dest_image_source.put_image_config(dest_image_name, image_config)
 
         # Generate a new registry manifest, and push ...
@@ -858,7 +860,7 @@ class RegistryV2ImageSource(ImageSource):
         else:
             raise RuntimeError("Unknown derived class: {0}".format(type(dest_image_source)))
 
-        logging.info("Created new image: %s", dest_image_name)
+        LOGGER.info("Created new image: %s", dest_image_name)
 
         return data
 
@@ -881,7 +883,7 @@ class RegistryV2ImageSource(ImageSource):
             must_be_equal(data["image_layers"][i], data_uncompressed["digest"],
                           "Image layer[{0}] digest mismatch".format(i))
 
-        logging.info("Integrity check passed.")
+        LOGGER.info("Integrity check passed.")
 
         return {
             "compressed_layer_files": compressed_layer_files,
@@ -998,12 +1000,12 @@ class DeviceMapperRepositoryImageSource(ImageSource):
 
     def sign_image(self, signer: Signer, src_image_name: ImageName, dest_image_source: ImageSource,
                    dest_image_name: ImageName):
-        logging.info("Signing: %s ...", src_image_name)
+        LOGGER.info("Signing: %s ...", src_image_name)
 
         # Generate a signed image configuration ...
         data = self._sign_image_config(signer, src_image_name)
         manifest = data["verify_image_data"]["manifest"]
-        logging.debug("    Signature:\n%s", data["signature_value"])
+        LOGGER.debug("    Signature:\n%s", data["signature_value"])
         image_config = data["image_config"]
 
         # Replicate all of the image layers
@@ -1018,7 +1020,7 @@ class DeviceMapperRepositoryImageSource(ImageSource):
 
         # Push the new image configuration ...
         config_digest_signed = image_config.get_config_digest()
-        logging.debug("    config digest (signed): %s", config_digest_signed)
+        LOGGER.debug("    config digest (signed): %s", config_digest_signed)
         dest_image_source.put_image_config(dest_image_name, image_config)
 
         # Generate a new repository manifest, and push ...
@@ -1037,7 +1039,7 @@ class DeviceMapperRepositoryImageSource(ImageSource):
             raise RuntimeError("Unknown derived class: {0}".format(
                 type(dest_image_source)))
 
-        logging.info("Created new image: %s", dest_image_name)
+        LOGGER.info("Created new image: %s", dest_image_name)
 
         return data
 
@@ -1059,7 +1061,7 @@ class DeviceMapperRepositoryImageSource(ImageSource):
             must_be_equal(data["image_layers"][i], data_compressed["digest"],
                           "Repository layer[{0}] digest mismatch".format(i))
 
-        logging.info("Integrity check passed.")
+        LOGGER.info("Integrity check passed.")
 
         return {
             "image_config": data["image_config"],

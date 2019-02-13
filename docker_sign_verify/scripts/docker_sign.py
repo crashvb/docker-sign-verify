@@ -21,6 +21,8 @@ from .utils import (
     HiddenPassword
 )
 
+LOGGER = logging.getLogger(__name__)
+
 # Bug Fix: There isn't anything we can do about mis-configured remote certificates ...
 urllib3.disable_warnings(urllib3.exceptions.SecurityWarning)
 
@@ -45,7 +47,7 @@ def sign(context):
     """Signs an image."""
 
     if context.obj["sigtype"] == "gpg" and ("." in context.obj["keyid"] or "/" in context.obj["keyid"]):
-        logging.warning("Key identifier looks like path, but signature type is GPG!")
+        LOGGER.warning("Key identifier looks like path, but signature type is GPG!")
 
     signer_module = __import__("docker_sign_verify.signers")
     signer_class = getattr(signer_module, "{0}Signer".format(context.obj["sigtype"].upper()))

@@ -15,6 +15,7 @@ from .utils import (
     must_be_equal,
     FormattedSHA256)
 
+LOGGER = logging.getLogger(__name__)
 
 class ImageConfig:
     """
@@ -215,7 +216,7 @@ class ImageConfig:
                 raise Exception("Refusing to sign; signature(s) exist without original config hash!")
         else:
             if original_config:
-                logging.warning("Original config hash found without signatures;overriding!")
+                LOGGER.warning("Original config hash found without signatures;overriding!")
             signature_data["original_config"] = self.get_config_digest()
             original_config = signature_data["original_config"]
 

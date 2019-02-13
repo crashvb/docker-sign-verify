@@ -22,6 +22,8 @@ from Crypto.Signature import PKCS1_v1_5
 from Crypto.Signature.pkcs1_15 import PKCS115_SigScheme
 from Crypto.Hash import SHA256
 
+LOGGER = logging.getLogger(__name__)
+
 class Signer(abc.ABC):
     """
     Abstract class to create and verify docker image signatures.
@@ -93,7 +95,7 @@ class GPGSigner(Signer):
         self.keyid = keyid
         self.passphrase = passphrase
 
-        logging.debug("Using trust store: %s", homedir)
+        LOGGER.debug("Using trust store: %s", homedir)
         self.gpg = gnupg.GPG(homedir=homedir)
 
     def _debug_init_store(self, name="DSV Test Key", email="test.key@swift.com"):
@@ -121,7 +123,7 @@ class GPGSigner(Signer):
 
     def sign(self, data: bytes) -> str:
         if not self.keyid:
-            logging.warning("Signing using implicit / default keyid!")
+            LOGGER.warning("Signing using implicit / default keyid!")
             # raise RuntimeError("Cannot sign without keyid!")
 
         kwargs = {}
@@ -172,7 +174,7 @@ class PKISigner(Signer):
         self.private_signer = None
         self.public_signer = None
 
-        logging.debug("Using keypair: %s", self.keypair_path)
+        LOGGER.debug("Using keypair: %s", self.keypair_path)
 
     def _debug_init_keypair(self, bits=2048):
         """
