@@ -10,12 +10,10 @@ import re
 import canonicaljson
 
 from .signers import Signer
-from .utils import (
-    formatted_digest,
-    must_be_equal,
-    FormattedSHA256)
+from .utils import formatted_digest, must_be_equal, FormattedSHA256
 
 LOGGER = logging.getLogger(__name__)
+
 
 class ImageConfig:
     """
@@ -52,11 +50,13 @@ class ImageConfig:
         if signature_data["signatures"]:
             result += "{0}:{1},".format(
                 json.dumps(ImageConfig.SIGNATURES_LABEL),
-                json.dumps(signature_data["signatures"]))
+                json.dumps(signature_data["signatures"]),
+            )
         if signature_data["original_config"]:
             result += "{0}:{1},".format(
                 json.dumps(ImageConfig.ORIGINAL_CONFIG_LABEL),
-                json.dumps(signature_data["original_config"]))
+                json.dumps(signature_data["original_config"]),
+            )
 
         return result.encode("utf-8")
 
@@ -155,9 +155,11 @@ class ImageConfig:
                 signatures_list: List of PEM encoded signature values.
         """
         original_config = self.config_json["config"]["Labels"].get(
-            ImageConfig.ORIGINAL_CONFIG_LABEL, None)
+            ImageConfig.ORIGINAL_CONFIG_LABEL, None
+        )
         signatures = self.config_json["config"]["Labels"].get(
-            ImageConfig.SIGNATURES_LABEL, "")
+            ImageConfig.SIGNATURES_LABEL, ""
+        )
 
         pem_marker = r"-{5}[^-]+-{5}"
         signature_list = re.findall(r"({0}[^-]+{0})".format(pem_marker), signatures)
@@ -213,12 +215,15 @@ class ImageConfig:
             # It is not reasonably possible to reproduce the hash of the
             # original image configuration at this point.
             if not original_config:
-                raise Exception("Refusing to sign; signature(s) exist without original config hash!")
+                raise Exception(
+                    "Refusing to sign; signature(s) exist without original config hash!"
+                )
         else:
             if original_config:
-                LOGGER.warning("Original config hash found without signatures;overriding!")
-            signature_data["original_config"] = self.get_config_digest()
-            original_config = signature_data["original_config"]
+                LOGGER.warning(
+                    "Original config hash found without signatures;overriding!"
+                )
+            original_config = self.get_config_digest()
 
         digest = self.get_config_digest_canonical().encode("utf-8")
         # if original_config and digest != original_config:
@@ -228,9 +233,7 @@ class ImageConfig:
         if not signature:
             raise RuntimeError("Failed to create signature!")
         signature_data["signatures"] += signature
-        self.set_signature_data(
-            signature_data["original_config"],
-            signature_data["signatures"])
+        self.set_signature_data(original_config, signature_data["signatures"])
 
         return signature
 
@@ -253,7 +256,8 @@ class ImageConfig:
         must_be_equal(
             signature_data["original_config"],
             config_original.get_config_digest(),
-            "Image config digest mismatch (2)")
+            "Image config digest mismatch (2)",
+        )
 
         # Verify the image signatures ...
         digest = config_original.get_config_digest_canonical().encode("utf-8")
@@ -263,10 +267,7 @@ class ImageConfig:
             result = signer.verify(digest, signature)
             results.append(result)
 
-        return {
-            "signature_data": signature_data,
-            "results": results,
-        }
+        return {"signature_data": signature_data, "results": results}
 
     def unsign(self):
         """Removes all signatures fro the image configuration."""

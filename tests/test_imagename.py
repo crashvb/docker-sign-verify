@@ -32,6 +32,7 @@ def test_str():
                     assert tag in string
                 assert "None" not in string
 
+
 def test_parse_string():
     """Test string parsing for complex image names."""
     for endpoint in ["endpoint.io", "endpoint:port", None]:
@@ -51,6 +52,7 @@ def test_parse_string():
                 assert result["image"] == image
                 assert result["tag"] == tag
 
+
 def test_parse():
     """Test initialization via parsed strings."""
     (endpoint, image, tag) = ["address:port", "namespace/iamge", "tag"]
@@ -58,6 +60,7 @@ def test_parse():
     assert image_name.endpoint == endpoint
     assert image_name.image == image
     assert image_name.tag == tag
+
 
 def test_endpoint(image_name: ImageName):
     """Tests endpoint retrieval."""

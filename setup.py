@@ -16,6 +16,7 @@ def find_version(*segments):
         return match.group(1)
     raise RuntimeError("Unable to find version string!")
 
+
 setup(
     author="Richard Davis",
     author_email="crashvb@gmail.com",
@@ -27,23 +28,17 @@ setup(
         "Operating System :: OS Independent",
     ],
     description="A utility that can be used to sign and verify docker images.",
-    entry_points='''
+    entry_points="""
         [console_scripts]
         docker-sign=docker_sign_verify.scripts.docker_sign:cli
         docker-verify=docker_sign_verify.scripts.docker_verify:cli
-    ''',
-    extras_require={"dev": ["pylint", "twine", "pytest", "wheel"]},
+    """,
+    extras_require={"dev": ["black", "pylint", "twine", "pytest", "wheel"]},
     include_package_data=True,
-    install_requires=[
-        "canonicaljson",
-        "click",
-        "gnupg",
-        "pycryptodome",
-        "requests",
-    ],
+    install_requires=["canonicaljson", "click", "gnupg", "pycryptodome", "requests"],
     keywords="docker docker-sign docker-verify integrity sign signatures verify",
     license="Apache License 2.0",
-    long_description=open('README.md', encoding='utf-8').read(),
+    long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     name="docker_sign_verify",
     packages=find_packages(),
@@ -51,5 +46,5 @@ setup(
     tests_require=["pytest"],
     test_suite="tests",
     url="https://pypi.org/project/docker-sign-verify/",
-    version=find_version("docker_sign_verify", "__init__.py")
+    version=find_version("docker_sign_verify", "__init__.py"),
 )

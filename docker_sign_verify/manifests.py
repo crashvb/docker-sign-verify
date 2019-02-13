@@ -7,13 +7,11 @@ import copy
 import json
 
 from pathlib import Path
+from typing import List
 
 from .imageconfig import ImageConfig
 from .imagename import ImageName
-from .utils import (
-    formatted_digest,
-    read_file,
-    FormattedSHA256)
+from .utils import formatted_digest, read_file, FormattedSHA256
 
 
 class Manifest(abc.ABC):
@@ -111,10 +109,16 @@ class ArchiveManifest(Manifest):
                 if config["RepoTags"] and repotag in config["RepoTags"]:
                     return config
         else:
-            return [config for config in self.json if config["Config"] == "{0}.json".format(image_name.image)][0]
+            return [
+                config
+                for config in self.json
+                if config["Config"] == "{0}.json".format(image_name.image)
+            ][0]
         raise RuntimeError("Unable to locate configuration in archive manifest!")
 
-    def append_config(self, config_digest: FormattedSHA256, layers: list, repotags: list = None):
+    def append_config(
+        self, config_digest: FormattedSHA256, layers: List, repotags: List = None
+    ):
         """
         Appends an image configuration dictionary to the image source manifest
 
@@ -125,7 +129,7 @@ class ArchiveManifest(Manifest):
         """
         config = {
             "Config": "{0}.json".format(config_digest.sha256),
-            "Layers": [ArchiveManifest.digest_to_layer(l) for l in layers]
+            "Layers": [ArchiveManifest.digest_to_layer(l) for l in layers],
         }
         if repotags:
             config["RepoTags"] = repotags
@@ -161,7 +165,9 @@ class RegistryV2Manifest(Manifest):
             self.json["config"]["digest"] = config_digest
             self.json["config"]["size"] = size
         else:
-            raise RuntimeError("Unsupported schema version: {0}".format(self.json["schemaVersion"]))
+            raise RuntimeError(
+                "Unsupported schema version: {0}".format(self.json["schemaVersion"])
+            )
 
     # Manifest Members
 
@@ -169,7 +175,9 @@ class RegistryV2Manifest(Manifest):
         if self.json["schemaVersion"] == 2:
             result = FormattedSHA256.parse(self.json["config"]["digest"])
         else:
-            raise RuntimeError("Unsupported schema version: {0}".format(self.json["schemaVersion"]))
+            raise RuntimeError(
+                "Unsupported schema version: {0}".format(self.json["schemaVersion"])
+            )
 
         return result
 
@@ -177,7 +185,9 @@ class RegistryV2Manifest(Manifest):
         if self.json["schemaVersion"] == 2:
             result = [FormattedSHA256.parse(l["digest"]) for l in self.json["layers"]]
         else:
-            raise RuntimeError("Unsupported schema version: {0}".format(self.json["schemaVersion"]))
+            raise RuntimeError(
+                "Unsupported schema version: {0}".format(self.json["schemaVersion"])
+            )
 
         return result
 
@@ -203,7 +213,9 @@ class DeviceMapperRepositoryManifest(Manifest):
         return str(key_name)
 
     @staticmethod
-    def get_combined_layerid(parent: FormattedSHA256, layer: FormattedSHA256) -> FormattedSHA256:
+    def get_combined_layerid(
+        parent: FormattedSHA256, layer: FormattedSHA256
+    ) -> FormattedSHA256:
         """
         Retrieves the layer identifier for a given parent-layer combination.
 
@@ -246,14 +258,18 @@ class DeviceMapperRepositoryManifest(Manifest):
 
     def get_layers(self, image_name: ImageName = None) -> list:
         # TODO: How can this be reimplemented to avoid duplicate code?
-        DM_CONTENT_ROOT = Path("/var/lib/docker/image/devicemapper/imagedb/content/sha256")
+        DM_CONTENT_ROOT = Path(
+            "/var/lib/docker/image/devicemapper/imagedb/content/sha256"
+        )
         path = DM_CONTENT_ROOT.joinpath(self.get_config_digest(image_name).sha256)
         image_config = ImageConfig(read_file(path))
 
         result = []
         parent = None
         for layer in image_config.get_image_layers():
-            result.append(DeviceMapperRepositoryManifest.get_combined_layerid(parent, layer))
+            result.append(
+                DeviceMapperRepositoryManifest.get_combined_layerid(parent, layer)
+            )
             parent = result[-1]
 
         return result

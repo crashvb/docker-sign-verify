@@ -11,6 +11,8 @@ import tarfile
 import tempfile
 import time
 
+from typing import Dict
+
 CHUNK_SIZE = 4096
 
 
@@ -40,7 +42,7 @@ class FormattedSHA256(str):
         return FormattedSHA256(digest[7:])
 
 
-def _chunk_file(file_in, file_out):
+def _chunk_file(file_in, file_out) -> Dict:
     """
     Copies from one file to another in chunks.
 
@@ -69,18 +71,17 @@ def _chunk_file(file_in, file_out):
         os.fsync(file_out.fileno())
     # pylint: disable=bare-except
     except:
-        pass
+        ...
 
     # Be kind, rewind ...
     file_out.seek(0)
 
-    return {
-        "digest": "sha256:{0}".format(hasher.hexdigest()),
-        "size": size
-    }
+    return {"digest": "sha256:{0}".format(hasher.hexdigest()), "size": size}
 
 
-def must_be_equal(expected, actual, msg: str = "Actual value does not match expected value"):
+def must_be_equal(
+    expected, actual, msg: str = "Actual value does not match expected value"
+):
     """
     Compares two values and raises an exception if they are not equal.
 
@@ -95,7 +96,7 @@ def must_be_equal(expected, actual, msg: str = "Actual value does not match expe
 
 def xellipsis(string: str) -> str:
     """
-    Reduces the length of a given string, if it is wider than the terminal width, inserting ellipsis.
+    Reduces the length of a given string, if it is wider than the terminal width, inserting str_ellipsis.
 
     Args:
         string: The string to be reduced.
@@ -103,12 +104,12 @@ def xellipsis(string: str) -> str:
     Returns:
         A string with a maximum length of the terminal width.
     """
-    return ellipsis(string, os.environ.get("COLUMNS", 80) / 2)
+    return str_ellipsis(string, os.environ.get("COLUMNS", 80) / 2)
 
 
-def ellipsis(string: str, max_length: int = 40) -> str:
+def str_ellipsis(string: str, max_length: int = 40) -> str:
     """
-    Reduces the length of a given string, if it is over a certain length, by inserting ellipsis.
+    Reduces the length of a given string, if it is over a certain length, by inserting str_ellipsis.
 
     Args:
         string: The string to be reduced.
@@ -122,7 +123,7 @@ def ellipsis(string: str, max_length: int = 40) -> str:
     n_2 = int(max_length) / 2 - 3
     n_1 = max_length - n_2 - 3
 
-    return "{0}...{1}".format(string[:int(n_1)], string[-int(n_2):])
+    return "{0}...{1}".format(string[: int(n_1)], string[-int(n_2) :])
 
 
 def formatted_digest(data: bytes) -> FormattedSHA256:
@@ -138,7 +139,7 @@ def formatted_digest(data: bytes) -> FormattedSHA256:
     return FormattedSHA256(hashlib.sha256(data).hexdigest())
 
 
-def copy_file(file_in, file_out):
+def copy_file(file_in, file_out) -> Dict:
     """
     Copies from one file to another.
 
@@ -167,14 +168,14 @@ def read_file(path) -> bytes:
         copy_file(file, bytesio)
     return bytesio.read()
 
-def write_file(path, content: bytes):
+
+def write_file(path, content: bytes) -> Dict:
     """
     Assigns the entire contents of a file.
 
     Args:
         path: Absolute path of the file to be assigned.
         content: The content to be assigned.
-        mode: The mode in which to write the file.
 
     Returns:
         dict: as defined by :func:~docker_sign_verify.Utils.copy_file.
@@ -182,6 +183,7 @@ def write_file(path, content: bytes):
     bytesio = io.BytesIO(content)
     with path.open(mode="wb") as file:
         return copy_file(bytesio, file)
+
 
 def tar_mkdir(file_out, name: str):
     """
@@ -305,7 +307,7 @@ def file_exists_in_tar(file_in, name: str):
     return False
 
 
-def gunzip(file_in, file_out):
+def gunzip(file_in, file_out) -> Dict:
     """
     Uncompresses a given gzip archive.
 

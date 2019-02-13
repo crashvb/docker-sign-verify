@@ -16,6 +16,7 @@ import tempfile
 import time
 
 from pathlib import Path
+from typing import Dict
 from urllib.parse import urlparse
 
 import gnupg  # Needed for type checking
@@ -25,7 +26,8 @@ from .manifests import (
     ArchiveManifest,
     DeviceMapperRepositoryManifest,
     Manifest,
-    RegistryV2Manifest)
+    RegistryV2Manifest,
+)
 from .imageconfig import ImageConfig
 from .imagename import ImageName
 from .signers import Signer
@@ -43,7 +45,8 @@ from .utils import (
     untar,
     write_file,
     xellipsis,
-    FormattedSHA256)
+    FormattedSHA256,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -53,7 +56,7 @@ class ImageSource(abc.ABC):
     Abstract source of docker images.
     """
 
-    def _sign_image_config(self, signer: Signer, image_name: ImageName) -> dict:
+    def _sign_image_config(self, signer: Signer, image_name: ImageName) -> Dict:
         """
         Verifies an image, then signs it without storing it in the image source.
 
@@ -77,10 +80,10 @@ class ImageSource(abc.ABC):
         return {
             "image_config": image_config,
             "signature_value": signature_value,
-            "verify_image_data": data
+            "verify_image_data": data,
         }
 
-    def _unsign_image_config(self, image_name: ImageName) -> dict:
+    def _unsign_image_config(self, image_name: ImageName) -> Dict:
         """
         Verifies an image, then removes all signature values without storing it in the image source.
 
@@ -98,12 +101,9 @@ class ImageSource(abc.ABC):
         # Remove all existing signatures ....
         image_config.unsign()
 
-        return {
-            "image_config": image_config,
-            "verify_image_data": data
-        }
+        return {"image_config": image_config, "verify_image_data": data}
 
-    def _verify_image_config(self, image_name: ImageName) -> dict:
+    def _verify_image_config(self, image_name: ImageName) -> Dict:
         """
         Verifies the integration of an image configuration against metadata contained within a manifest.
 
@@ -124,13 +124,23 @@ class ImageSource(abc.ABC):
         config_digest = manifest.get_config_digest(image_name)
         LOGGER.debug("    config digest: %s", xellipsis(config_digest))
         manifest_layers = manifest.get_layers(image_name)
-        LOGGER.debug("    manifest layers:\n\t\t\t%s", "\n\t\t\t".join([xellipsis(l) for l in manifest_layers]))
+        LOGGER.debug(
+            "    manifest layers:\n\t\t\t%s",
+            "\n\t\t\t".join([xellipsis(l) for l in manifest_layers]),
+        )
 
         # Retrieve the image layers from the image configuration ...
         image_config = self.get_image_config(image_name)
-        must_be_equal(config_digest, image_config.get_config_digest(), "Image config digest mismatch (1)")
+        must_be_equal(
+            config_digest,
+            image_config.get_config_digest(),
+            "Image config digest mismatch (1)",
+        )
         image_layers = image_config.get_image_layers()
-        LOGGER.debug("    image layers:\n\t\t\t%s", "\n\t\t\t".join([xellipsis(l) for l in image_layers]))
+        LOGGER.debug(
+            "    image layers:\n\t\t\t%s",
+            "\n\t\t\t".join([xellipsis(l) for l in image_layers]),
+        )
 
         # Quick check: Ensure that the layer counts are consistent
         must_be_equal(len(manifest_layers), len(image_layers), "Layer count mismatch")
@@ -139,7 +149,7 @@ class ImageSource(abc.ABC):
             "image_config": image_config,
             "image_layers": image_layers,
             "manifest": manifest,
-            "manifest_layers": manifest_layers
+            "manifest_layers": manifest_layers,
         }
 
     @abc.abstractmethod
@@ -155,6 +165,7 @@ class ImageSource(abc.ABC):
         """
 
     @abc.abstractmethod
+    # TODO: Can we make layer type 'FormattedSHA256' ???
     def get_image_layer_to_disk(self, image_name: ImageName, layer: str, file):
         """
         Retrieves a single image layer stored to disk.
@@ -231,29 +242,37 @@ class ImageSource(abc.ABC):
         """
 
     @abc.abstractmethod
-    def sign_image(self, signer: Signer, src_image_name: ImageName, dest_image_source, dest_image_name: ImageName):
+    def sign_image(
+        self,
+        signer: Signer,
+        src_image_name: ImageName,
+        dest_image_source,
+        dest_image_name: ImageName,
+    ):
         """
         Retrieves, verifies and signs the image, storing it in the destination image source.
 
         Args:
             signer: The signer used to create the signature value.
-            src_image: The source image name.
+            src_image_name: The source image name.
             dest_image_source: The destination image source into which to store the signed image.
-            dest_image: The description image name.
+            dest_image_name: The description image name.
 
         Returns:
             dict: as defined by :func:~docker_sign_verify.ImageSource._sign_image_config.
         """
 
     @abc.abstractmethod
-    def unsign_image(self, src_image_name: ImageName, dest_image_source, dest_image_name: ImageName):
+    def unsign_image(
+        self, src_image_name: ImageName, dest_image_source, dest_image_name: ImageName
+    ):
         """
             Retrieves and unsigns an image, storing it in the destination image source.
 
         Args:
-            src_image: The source image name.
+            src_image_name: The source image name.
             dest_image_source: The destination image source into which to store the unsigned image.
-            dest_image: The description image name.
+            dest_image_name: The description image name.
 
         Returns:
             dict: as defined by :func:~docker_sign_verify.ImageSource.TODO.
@@ -289,10 +308,16 @@ class ImageSource(abc.ABC):
 
         # Verify image signatures ...
         LOGGER.info("Verifying Signature(s): %s ...", image_name)
-        LOGGER.debug("    config digest (signed): %s", xellipsis(image_config.get_config_digest()))
+        LOGGER.debug(
+            "    config digest (signed): %s",
+            xellipsis(image_config.get_config_digest()),
+        )
         data = image_config.verify_signatures()
         signature_data = data["signature_data"]
-        LOGGER.debug("    config digest (unsigned): %s", xellipsis(signature_data["original_config"]))
+        LOGGER.debug(
+            "    config digest (unsigned): %s",
+            xellipsis(signature_data["original_config"]),
+        )
 
         # List the image signatures ...
         LOGGER.debug("    signtures:")
@@ -302,20 +327,24 @@ class ImageSource(abc.ABC):
                 if not result.valid:
                     raise Exception(
                         "Verification failed for signature with key_id '{0}': {1}".format(
-                            result.key_id,
-                            result.status))
+                            result.key_id, result.status
+                        )
+                    )
                 LOGGER.debug(
                     "        Signature made %s using key ID %s",
                     time.strftime(
-                        "%Y-%m-%d %H:%M:%S",
-                        time.gmtime(float(result.sig_timestamp))),
-                    result.key_id)
+                        "%Y-%m-%d %H:%M:%S", time.gmtime(float(result.sig_timestamp))
+                    ),
+                    result.key_id,
+                )
                 LOGGER.debug("            %s", result.username)
             elif result.get("type", None) == "pki":
                 if not result["valid"]:
                     raise Exception(
                         "Verification failed for signature using cert: {0}".format(
-                            result["keypair_path"]))
+                            result["keypair_path"]
+                        )
+                    )
                 # TODO: Add better debug logging
                 LOGGER.debug("        Signature made using undetailed PKI keypair.")
             else:
@@ -380,7 +409,9 @@ class ArchiveImageSource(ImageSource):
             #    def put_image_layer(self, image, content):
 
     def get_manifest(self, image_name: ImageName = None) -> Manifest:
-        raw_archive_manifest = self.get_file_from_archive(ArchiveImageSource.FILE_ARCHIVE_MANIFEST)
+        raw_archive_manifest = self.get_file_from_archive(
+            ArchiveImageSource.FILE_ARCHIVE_MANIFEST
+        )
         return ArchiveManifest(raw_archive_manifest)
 
     def put_image_config(self, image_name: ImageName, image_config: ImageConfig):
@@ -396,10 +427,11 @@ class ArchiveImageSource(ImageSource):
     def put_image_layer_from_disk(self, image_name: ImageName, file) -> FormattedSHA256:
         # TODO: Do we really want to use random garbage here???
         #       Look into moby/.../save.go to find what to use instead.
-        digest = formatted_digest("{0}{1}{2}".format(
-            str(image_name),
-            datetime.datetime.now(),
-            random.randint(1, 101)).encode("utf-8"))
+        digest = formatted_digest(
+            "{0}{1}{2}".format(
+                str(image_name), datetime.datetime.now(), random.randint(1, 101)
+            ).encode("utf-8")
+        )
         layer = ArchiveManifest.digest_to_layer(digest)
         with open(self.archive, "rb+") as file_out:
             tar_mkdir(file_out, os.path.dirname(layer))
@@ -414,13 +446,19 @@ class ArchiveImageSource(ImageSource):
             tar_add_file(
                 file_out,
                 ArchiveImageSource.FILE_ARCHIVE_MANIFEST,
-                str(manifest).encode("utf-8"))
+                str(manifest).encode("utf-8"),
+            )
 
     def layer_exists(self, image_name: ImageName, layer: FormattedSHA256) -> bool:
         return self._file_exists(ArchiveManifest.digest_to_layer(layer))
 
-    def sign_image(self, signer: Signer, src_image_name: ImageName, dest_image_source: ImageSource,
-                   dest_image_name: ImageName):
+    def sign_image(
+        self,
+        signer: Signer,
+        src_image_name: ImageName,
+        dest_image_source: ImageSource,
+        dest_image_name: ImageName,
+    ):
         LOGGER.info("Signing: %s ...", src_image_name)
 
         # Generate a signed image configuration ...
@@ -439,7 +477,8 @@ class ArchiveImageSource(ImageSource):
                     # Update the layer
                     digest = dest_image_source.put_image_layer_from_disk(
                         dest_image_name,
-                        data["verify_image_data"]["uncompressed_layer_files"][i])
+                        data["verify_image_data"]["uncompressed_layer_files"][i],
+                    )
                     archive_layers_changed[i] = digest
             archive_layers = archive_layers_changed
 
@@ -455,7 +494,9 @@ class ArchiveImageSource(ImageSource):
             repotags = None
             if dest_image_name.tag:
                 repotags = [str(dest_image_name)]
-                manifest_signed.append_config(config_digest_signed, archive_layers, repotags)
+                manifest_signed.append_config(
+                    config_digest_signed, archive_layers, repotags
+                )
             data["manifest_signed"] = manifest_signed
             # TODO: make sure to remove conflicting tags in "other" config entries
             dest_image_source.put_manifest(manifest_signed)
@@ -465,14 +506,17 @@ class ArchiveImageSource(ImageSource):
         elif isinstance(dest_image_source, DeviceMapperRepositoryImageSource):
             raise NotImplementedError
         else:
-            raise RuntimeError("Unknown derived class: {0}".format(
-                type(dest_image_source)))
+            raise RuntimeError(
+                "Unknown derived class: {0}".format(type(dest_image_source))
+            )
 
         LOGGER.info("Created new image: %s", dest_image_name)
 
         return data
 
-    def unsign_image(self, src_image_name: ImageName, dest_image_source, dest_image_name: ImageName):
+    def unsign_image(
+        self, src_image_name: ImageName, dest_image_source, dest_image_name: ImageName
+    ):
         raise NotImplementedError
 
     def verify_image_integrity(self, image_name: ImageName):
@@ -484,11 +528,13 @@ class ArchiveImageSource(ImageSource):
             # Retrieve the archive image layer and verify the digest ...
             uncompressed_layer_files.append(tempfile.NamedTemporaryFile())
             data_uncompressed = self.get_image_layer_to_disk(
-                image_name,
-                layer,
-                uncompressed_layer_files[i])
-            must_be_equal(data["image_layers"][i], data_uncompressed["digest"],
-                          "Archive layer[{0}] digest mismatch".format(i))
+                image_name, layer, uncompressed_layer_files[i]
+            )
+            must_be_equal(
+                data["image_layers"][i],
+                data_uncompressed["digest"],
+                "Archive layer[{0}] digest mismatch".format(i),
+            )
 
         LOGGER.info("Integrity check passed.")
 
@@ -512,7 +558,9 @@ class RegistryV2ImageSource(ImageSource):
     DEFAULT_CREDENTIALS_STORE = Path.home().joinpath(".docker/config.json")
     # DEFAULT_REGISTRY_ENDPOINT = os.environ.get("DSV_DEFAULT_REGISTRY", "hub.docker.com")
     DEFAULT_AUTH_ENDPOINT = os.environ.get("DSV_DOCKERHUB_AUTH", "auth.docker.io")
-    DEFAULT_REGISTRY_ENDPOINT = os.environ.get("DSV_DEFAULT_REGISTRY", "index.docker.io")
+    DEFAULT_REGISTRY_ENDPOINT = os.environ.get(
+        "DSV_DEFAULT_REGISTRY", "index.docker.io"
+    )
 
     CHUNK_SIZE = 4096
 
@@ -522,7 +570,9 @@ class RegistryV2ImageSource(ImageSource):
             credentials_store: Path to the docker registry credentials store.
         """
         if not credentials_store:
-            credentials_store = os.environ.get("DSV_CREDENTIALS_STORE", RegistryV2ImageSource.DEFAULT_CREDENTIALS_STORE)
+            credentials_store = os.environ.get(
+                "DSV_CREDENTIALS_STORE", RegistryV2ImageSource.DEFAULT_CREDENTIALS_STORE
+            )
         self.credentials_store = credentials_store
         self.credentials = None
 
@@ -565,7 +615,9 @@ class RegistryV2ImageSource(ImageSource):
                 with self.credentials_store.open(mode="rb") as file:
                     self.credentials = json.loads(file.read()).get("auths", {})
 
-        for endpoint_auth in [u for u in self.credentials if urlparse(u).netloc == endpoint]:
+        for endpoint_auth in [
+            u for u in self.credentials if urlparse(u).netloc == endpoint
+        ]:
             result = self.credentials[endpoint_auth].get("auth", None)
 
         return result
@@ -609,11 +661,17 @@ class RegistryV2ImageSource(ImageSource):
         Returns:
             TODO
         """
-        url = RegistryV2ImageSource.BLOB_URL_PATTERN.format(image_name.endpoint, image_name.image, "uploads/")
-        headers = self._get_request_headers(image_name.endpoint, {"Content-Type": "application/octet-stream"})
+        url = RegistryV2ImageSource.BLOB_URL_PATTERN.format(
+            image_name.endpoint, image_name.image, "uploads/"
+        )
+        headers = self._get_request_headers(
+            image_name.endpoint, {"Content-Type": "application/octet-stream"}
+        )
         if not digest:
             digest = formatted_digest(blob)
-        response = requests.put(url, params={"digest": digest}, headers=headers, data=blob)
+        response = requests.put(
+            url, params={"digest": digest}, headers=headers, data=blob
+        )
         must_be_equal(200, response.status_code, "Failed to upload blob")
 
         return response
@@ -628,12 +686,15 @@ class RegistryV2ImageSource(ImageSource):
         Returns:
             TODO
         """
-        url = RegistryV2ImageSource.BLOB_URL_PATTERN.format(image_name.endpoint, image_name.image,
-                                                            "uploads/")
+        url = RegistryV2ImageSource.BLOB_URL_PATTERN.format(
+            image_name.endpoint, image_name.image, "uploads/"
+        )
         headers = self._get_request_headers(image_name.endpoint)
         response = requests.post(url, headers=headers)
         # logging.debug("UUID: {0}".format(response.headers["Docker-Upload-UUID"]))
-        must_be_equal(202, response.status_code, "Failed to initiate resumable blob upload")
+        must_be_equal(
+            202, response.status_code, "Failed to initiate resumable blob upload"
+        )
 
         return response
 
@@ -651,8 +712,11 @@ class RegistryV2ImageSource(ImageSource):
         """
         headers = self._get_request_headers(
             urlparse(location).netloc,
-            {"Content-Range": "{0}-{1}".format(offset, offset + len(chunk) - 1),
-             "Content-Type": "application/octet-stream"})
+            {
+                "Content-Range": "{0}-{1}".format(offset, offset + len(chunk) - 1),
+                "Content-Type": "application/octet-stream",
+            },
+        )
         response = requests.patch(location, headers=headers, data=chunk)
         must_be_equal(202, response.status_code, "Failed to upload blob chunk")
 
@@ -670,9 +734,15 @@ class RegistryV2ImageSource(ImageSource):
         Returns:
             TODO
         """
-        headers = self._get_request_headers(urlparse(location).netloc, {"Content-Type": "application/octet-stream"})
-        response = requests.put(location, params={"digest": digest}, headers=headers, data=chunk)
-        must_be_equal(201, response.status_code, "Failed to complete resumable blob upload")
+        headers = self._get_request_headers(
+            urlparse(location).netloc, {"Content-Type": "application/octet-stream"}
+        )
+        response = requests.put(
+            location, params={"digest": digest}, headers=headers, data=chunk
+        )
+        must_be_equal(
+            201, response.status_code, "Failed to complete resumable blob upload"
+        )
 
         return response
 
@@ -688,8 +758,12 @@ class RegistryV2ImageSource(ImageSource):
         Returns:
             TODO
         """
-        headers = self._get_request_headers(image_name.endpoint, {"Accept": RegistryV2ImageSource.BLOB_MIME_TYPE})
-        url = RegistryV2ImageSource.BLOB_URL_PATTERN.format(image_name.endpoint, image_name.image, layer)
+        headers = self._get_request_headers(
+            image_name.endpoint, {"Accept": RegistryV2ImageSource.BLOB_MIME_TYPE}
+        )
+        url = RegistryV2ImageSource.BLOB_URL_PATTERN.format(
+            image_name.endpoint, image_name.image, layer
+        )
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         return response.content
@@ -701,8 +775,12 @@ class RegistryV2ImageSource(ImageSource):
         return ImageConfig(self.get_image_layer(image_name, config_digest))
 
     def get_image_layer_to_disk(self, image_name: ImageName, layer: str, file):
-        headers = self._get_request_headers(image_name.endpoint, {"Accept": RegistryV2ImageSource.BLOB_MIME_TYPE})
-        url = RegistryV2ImageSource.BLOB_URL_PATTERN.format(image_name.endpoint, image_name.image, layer)
+        headers = self._get_request_headers(
+            image_name.endpoint, {"Accept": RegistryV2ImageSource.BLOB_MIME_TYPE}
+        )
+        url = RegistryV2ImageSource.BLOB_URL_PATTERN.format(
+            image_name.endpoint, image_name.image, layer
+        )
         response = requests.get(url, headers=headers, stream=True)
 
         size = 0
@@ -719,19 +797,23 @@ class RegistryV2ImageSource(ImageSource):
         # Be kind, rewind ...
         file.seek(0)
 
-        return {
-            "digest": FormattedSHA256(hasher.hexdigest()),
-            "size": size
-        }
+        return {"digest": FormattedSHA256(hasher.hexdigest()), "size": size}
 
     def get_manifest(self, image_name: ImageName = None) -> Manifest:
         endpoint = image_name.endpoint
         if not endpoint:
-            LOGGER.warning("Performing registry operation on unqualified image name: %s", image_name)
+            LOGGER.warning(
+                "Performing registry operation on unqualified image name: %s",
+                image_name,
+            )
             endpoint = RegistryV2ImageSource.DEFAULT_REGISTRY_ENDPOINT
 
-        headers = self._get_request_headers(endpoint, {"Accept": RegistryV2ImageSource.MANIFEST_MIME_TYPE})
-        url = RegistryV2ImageSource.MANIFEST_URL_PATTERN.format(endpoint, image_name.image, image_name.tag)
+        headers = self._get_request_headers(
+            endpoint, {"Accept": RegistryV2ImageSource.MANIFEST_MIME_TYPE}
+        )
+        url = RegistryV2ImageSource.MANIFEST_URL_PATTERN.format(
+            endpoint, image_name.image, image_name.tag
+        )
 
         response = requests.get(url, headers=headers)
         response.raise_for_status()
@@ -760,7 +842,9 @@ class RegistryV2ImageSource(ImageSource):
             chunk = file.read(RegistryV2ImageSource.CHUNK_SIZE)
             if not chunk:
                 break
-            location = self.resume_blob_upload(location, offset, chunk).headers["location"]
+            location = self.resume_blob_upload(location, offset, chunk).headers[
+                "location"
+            ]
             offset += len(chunk)
             hasher.update(chunk)
         digest = FormattedSHA256(hasher.hexdigest())
@@ -768,22 +852,32 @@ class RegistryV2ImageSource(ImageSource):
         return self.complete_resumable_blob_upload(location, digest)
 
     def put_manifest(self, manifest: Manifest, image_name: ImageName = None):
-        url = RegistryV2ImageSource.MANIFEST_URL_PATTERN.format(image_name.endpoint, image_name.image, image_name.tag)
+        url = RegistryV2ImageSource.MANIFEST_URL_PATTERN.format(
+            image_name.endpoint, image_name.image, image_name.tag
+        )
         headers = self._get_request_headers(
             image_name.endpoint,
-            {"Content-Type": RegistryV2ImageSource.MANIFEST_MIME_TYPE})
+            {"Content-Type": RegistryV2ImageSource.MANIFEST_MIME_TYPE},
+        )
 
         return requests.put(url, headers=headers, data=str(manifest).encode("utf-8"))
 
     def layer_exists(self, image_name: ImageName, layer: FormattedSHA256) -> bool:
-        url = RegistryV2ImageSource.BLOB_URL_PATTERN.format(image_name.endpoint, image_name, layer)
+        url = RegistryV2ImageSource.BLOB_URL_PATTERN.format(
+            image_name.endpoint, image_name, layer
+        )
         headers = self._get_request_headers(image_name.endpoint)
         response = requests.head(url, headers=headers)
 
         return response.status_code == 200
 
-    def sign_image(self, signer: Signer, src_image_name: ImageName, dest_image_source: ImageSource,
-                   dest_image_name: ImageName):
+    def sign_image(
+        self,
+        signer: Signer,
+        src_image_name: ImageName,
+        dest_image_source: ImageSource,
+        dest_image_name: ImageName,
+    ):
         LOGGER.info("Signing: %s ...", src_image_name)
 
         # Generate a signed image configuration ...
@@ -800,7 +894,8 @@ class RegistryV2ImageSource(ImageSource):
                 if not dest_image_source.layer_exists(dest_image_name, registry_layer):
                     dest_image_source.put_image_layer_from_disk(
                         dest_image_name,
-                        data["verify_image_data"]["compressed_layer_files"][i])
+                        data["verify_image_data"]["compressed_layer_files"][i],
+                    )
 
         # Push the new image configuration ...
         config_digest_signed = image_config.get_config_digest()
@@ -812,19 +907,25 @@ class RegistryV2ImageSource(ImageSource):
             raise NotImplementedError
         elif isinstance(dest_image_source, RegistryV2ImageSource):
             manifest_signed = copy.deepcopy(manifest)  # type: RegistryV2Manifest
-            manifest_signed.override_config(config_digest_signed, len(image_config.get_config()))
+            manifest_signed.override_config(
+                config_digest_signed, str(len(image_config.get_config()))
+            )
             data["manifest_signed"] = manifest_signed
             dest_image_source.put_manifest(manifest_signed, dest_image_name)
         elif isinstance(dest_image_source, DeviceMapperRepositoryImageSource):
             raise NotImplementedError
         else:
-            raise RuntimeError("Unknown derived class: {0}".format(type(dest_image_source)))
+            raise RuntimeError(
+                "Unknown derived class: {0}".format(type(dest_image_source))
+            )
 
         LOGGER.info("Created new image: %s", dest_image_name)
 
         return data
 
-    def unsign_image(self, src_image_name: ImageName, dest_image_source, dest_image_name: ImageName):
+    def unsign_image(
+        self, src_image_name: ImageName, dest_image_source, dest_image_name: ImageName
+    ):
         LOGGER.info("Unsigning: %s ...", src_image_name)
 
         # Generate an unsigned image configuration ...
@@ -840,7 +941,8 @@ class RegistryV2ImageSource(ImageSource):
                 if not dest_image_source.layer_exists(dest_image_name, registry_layer):
                     dest_image_source.put_image_layer_from_disk(
                         dest_image_name,
-                        data["verify_image_data"]["compressed_layer_files"][i])
+                        data["verify_image_data"]["compressed_layer_files"][i],
+                    )
 
         # Push the new image configuration ...
         config_digest_unsigned = image_config.get_config_digest()
@@ -852,13 +954,17 @@ class RegistryV2ImageSource(ImageSource):
             raise NotImplementedError
         elif isinstance(dest_image_source, RegistryV2ImageSource):
             manifest_unsigned = copy.deepcopy(manifest)  # type: RegistryV2Manifest
-            manifest_unsigned.override_config(config_digest_unsigned, len(image_config.get_config()))
+            manifest_unsigned.override_config(
+                config_digest_unsigned, str(len(image_config.get_config()))
+            )
             data["manifest_unsigned"] = manifest_unsigned
             dest_image_source.put_manifest(manifest_unsigned, dest_image_name)
         elif isinstance(dest_image_source, DeviceMapperRepositoryImageSource):
             raise NotImplementedError
         else:
-            raise RuntimeError("Unknown derived class: {0}".format(type(dest_image_source)))
+            raise RuntimeError(
+                "Unknown derived class: {0}".format(type(dest_image_source))
+            )
 
         LOGGER.info("Created new image: %s", dest_image_name)
 
@@ -873,15 +979,26 @@ class RegistryV2ImageSource(ImageSource):
         for i, layer in enumerate(data["manifest_layers"]):
             # Retrieve the registry image layer and verify the digest ...
             compressed_layer_files.append(tempfile.NamedTemporaryFile())
-            data_compressed = self.get_image_layer_to_disk(image_name, layer, compressed_layer_files[i])
-            must_be_equal(layer, data_compressed["digest"], "Registry layer[{0}] digest mismatch".format(i))
+            data_compressed = self.get_image_layer_to_disk(
+                image_name, layer, compressed_layer_files[i]
+            )
+            must_be_equal(
+                layer,
+                data_compressed["digest"],
+                "Registry layer[{0}] digest mismatch".format(i),
+            )
 
             # Decompress (convert) the registry image layer into the image layer
             # and verify the digest ...
             uncompressed_layer_files.append(tempfile.NamedTemporaryFile())
-            data_uncompressed = gunzip(compressed_layer_files[i], uncompressed_layer_files[i])
-            must_be_equal(data["image_layers"][i], data_uncompressed["digest"],
-                          "Image layer[{0}] digest mismatch".format(i))
+            data_uncompressed = gunzip(
+                compressed_layer_files[i], uncompressed_layer_files[i]
+            )
+            must_be_equal(
+                data["image_layers"][i],
+                data_uncompressed["digest"],
+                "Image layer[{0}] digest mismatch".format(i),
+            )
 
         LOGGER.info("Integrity check passed.")
 
@@ -910,15 +1027,17 @@ class DeviceMapperRepositoryImageSource(ImageSource):
 
     def get_image_config(self, image_name: ImageName) -> ImageConfig:
         config_digest = self.get_manifest().get_config_digest(image_name)
-        path = DeviceMapperRepositoryImageSource.DM_CONTENT_ROOT.joinpath(config_digest.sha256)
+        path = DeviceMapperRepositoryImageSource.DM_CONTENT_ROOT.joinpath(
+            config_digest.sha256
+        )
         raw_image_config = read_file(path)
         return ImageConfig(raw_image_config)
 
     def get_image_layer_to_disk(self, image_name: ImageName, layer: str, file):
         # Retrieve the devicemapper metadata ...
         path = DeviceMapperRepositoryImageSource.DM_LAYER_ROOT.joinpath(
-            layer[7:],
-            "cache-id")
+            layer[7:], "cache-id"
+        )
         cache_id = read_file(path).decode("utf-8")
         if not cache_id:
             raise RuntimeError("Unable to find cache id for layer: {0}".format(layer))
@@ -926,29 +1045,49 @@ class DeviceMapperRepositoryImageSource(ImageSource):
         raw_metadata = read_file(path)
         metadata = json.loads(raw_metadata)
         if not (metadata["device_id"] or metadata["size"]):
-            raise RuntimeError("Unable to find device id and / or size for layer: {0}".format(layer))
+            raise RuntimeError(
+                "Unable to find device id and / or size for layer: {0}".format(layer)
+            )
 
         # Create the devicemapper table ...
         device_name = "dsv-{0}".format(layer)
         # TODO: How to we find the vgname?
         volume_group = "/dev/mapper/rhel-docker--pool"
-        table = "0 {0} thin {1} {2}".format(metadata["size"], volume_group, metadata["device_id"])
-        subprocess.run(["/sbin/dmsetup", "create", device_name, "--table", table], check=True)
+        table = "0 {0} thin {1} {2}".format(
+            metadata["size"], volume_group, metadata["device_id"]
+        )
+        subprocess.run(
+            ["/sbin/dmsetup", "create", device_name, "--table", table], check=True
+        )
 
         # Mount the layer ...
         mount = Path(tempfile.mkdtemp())
-        subprocess.run(["mount", "-o", "ro", Path("/dev/mapper").joinpath(device_name), mount.absolute()], check=True)
+        subprocess.run(
+            [
+                "mount",
+                "-o",
+                "ro",
+                Path("/dev/mapper").joinpath(device_name),
+                mount.absolute(),
+            ],
+            check=True,
+        )
 
         # Reconstruct the layer tar ...
-        path = DeviceMapperRepositoryImageSource.DM_LAYER_ROOT.joinpath(layer[7:], "tar-split.json.gz")
+        path = DeviceMapperRepositoryImageSource.DM_LAYER_ROOT.joinpath(
+            layer[7:], "tar-split.json.gz"
+        )
         rootfs = mount.joinpath("rootfs")
         if not rootfs.exists():
-            raise RuntimeError("Root filesystem does not exist for layer: {0}".format(layer))
+            raise RuntimeError(
+                "Root filesystem does not exist for layer: {0}".format(layer)
+            )
         # TODO: Replace this with a pure-python implementation
         process = subprocess.Popen(
             ["tar-split", "asm", "--input", str(path), "--path", rootfs],
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL)
+            stderr=subprocess.DEVNULL,
+        )
         # TODO: This still buffers the entire file in memory ...
         result = copy_file(process.stdout, file)
         return_code = process.wait(120)
@@ -963,14 +1102,17 @@ class DeviceMapperRepositoryImageSource(ImageSource):
         return result
 
     def get_manifest(self, image_name: ImageName = None) -> Manifest:
-        raw_repository_manifest = read_file(DeviceMapperRepositoryImageSource.DM_REPOSITORIES)
+        raw_repository_manifest = read_file(
+            DeviceMapperRepositoryImageSource.DM_REPOSITORIES
+        )
         return DeviceMapperRepositoryManifest(raw_repository_manifest)
 
     def put_image_config(self, image_name: ImageName, image_config: ImageConfig):
         # TODO: Remove debug code
         # path = DeviceMapperRepositoryImageSource.DM_CONTENT_ROOT.joinpath(image_config.get_config_digest().sha256)
-        path = Path("/tmp/docker-ridavis/image/devicemapper/imagedb/conent/sha256/").joinpath(
-            image_config.get_config_digest().sha256)
+        path = Path(
+            "/tmp/docker-ridavis/image/devicemapper/imagedb/conent/sha256/"
+        ).joinpath(image_config.get_config_digest().sha256)
         path.parent.mkdir(exist_ok=True, parents=True)
         write_file(path, image_config.get_config())
 
@@ -991,15 +1133,24 @@ class DeviceMapperRepositoryImageSource(ImageSource):
 
     def layer_exists(self, image_name: ImageName, layer: FormattedSHA256) -> bool:
         result = False
-        path_layer = DeviceMapperRepositoryImageSource.DM_LAYER_ROOT.joinpath(layer.sha256).joinpath("cache-id")
+        path_layer = DeviceMapperRepositoryImageSource.DM_LAYER_ROOT.joinpath(
+            layer.sha256
+        ).joinpath("cache-id")
         if path_layer.exists():
             cache_id = read_file(path_layer).decode("utf-8")
-            path_cache = DeviceMapperRepositoryImageSource.DM_METADATA_ROOT.joinpath(cache_id)
+            path_cache = DeviceMapperRepositoryImageSource.DM_METADATA_ROOT.joinpath(
+                cache_id
+            )
             result = path_cache.exists()
         return result
 
-    def sign_image(self, signer: Signer, src_image_name: ImageName, dest_image_source: ImageSource,
-                   dest_image_name: ImageName):
+    def sign_image(
+        self,
+        signer: Signer,
+        src_image_name: ImageName,
+        dest_image_source: ImageSource,
+        dest_image_name: ImageName,
+    ):
         LOGGER.info("Signing: %s ...", src_image_name)
 
         # Generate a signed image configuration ...
@@ -1013,10 +1164,13 @@ class DeviceMapperRepositoryImageSource(ImageSource):
         if dest_image_source != self:
             repository_layers = manifest.get_layers(src_image_name)
             for i, repository_layer in enumerate(repository_layers):
-                if not dest_image_source.layer_exists(dest_image_name, repository_layer):
+                if not dest_image_source.layer_exists(
+                    dest_image_name, repository_layer
+                ):
                     dest_image_source.put_image_layer_from_disk(
                         dest_image_name,
-                        data["verify_image_data"]["compressed_layer_files"][i])
+                        data["verify_image_data"]["compressed_layer_files"][i],
+                    )
 
         # Push the new image configuration ...
         config_digest_signed = image_config.get_config_digest()
@@ -1029,21 +1183,26 @@ class DeviceMapperRepositoryImageSource(ImageSource):
         elif isinstance(dest_image_source, RegistryV2ImageSource):
             raise NotImplementedError
         elif isinstance(dest_image_source, DeviceMapperRepositoryImageSource):
-            manifest_signed = dest_image_source.get_manifest()  # type: DeviceMapperRepositoryManifest
+            manifest_signed = (
+                dest_image_source.get_manifest()
+            )  # type: DeviceMapperRepositoryManifest
 
             if dest_image_name.tag:
                 manifest_signed.override_config(config_digest_signed, dest_image_name)
             data["manifest_signed"] = manifest_signed
             dest_image_source.put_manifest(manifest_signed, dest_image_name)
         else:
-            raise RuntimeError("Unknown derived class: {0}".format(
-                type(dest_image_source)))
+            raise RuntimeError(
+                "Unknown derived class: {0}".format(type(dest_image_source))
+            )
 
         LOGGER.info("Created new image: %s", dest_image_name)
 
         return data
 
-    def unsign_image(self, src_image_name: ImageName, dest_image_source, dest_image_name: ImageName):
+    def unsign_image(
+        self, src_image_name: ImageName, dest_image_source, dest_image_name: ImageName
+    ):
         raise NotImplementedError
 
     def verify_image_integrity(self, image_name: ImageName):
@@ -1057,9 +1216,14 @@ class DeviceMapperRepositoryImageSource(ImageSource):
         for i, layer in enumerate(data["manifest_layers"]):
             # Retrieve the repository image layer and verify the digest ...
             uncompressed_layer_files.append(tempfile.NamedTemporaryFile())
-            data_compressed = self.get_image_layer_to_disk(image_name, layer, uncompressed_layer_files[i])
-            must_be_equal(data["image_layers"][i], data_compressed["digest"],
-                          "Repository layer[{0}] digest mismatch".format(i))
+            data_compressed = self.get_image_layer_to_disk(
+                image_name, layer, uncompressed_layer_files[i]
+            )
+            must_be_equal(
+                data["image_layers"][i],
+                data_compressed["digest"],
+                "Repository layer[{0}] digest mismatch".format(i),
+            )
 
         LOGGER.info("Integrity check passed.")
 

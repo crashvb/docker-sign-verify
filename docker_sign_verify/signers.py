@@ -3,7 +3,7 @@
 """Classes that provide signature functionality."""
 
 # TODO: Update pycharm version and test
-#from __future__ import annotations
+# from __future__ import annotations
 
 import abc
 import base64
@@ -14,6 +14,7 @@ import re
 import tempfile
 
 from pathlib import Path
+from typing import List
 
 import gnupg
 
@@ -23,6 +24,7 @@ from Crypto.Signature.pkcs1_15 import PKCS115_SigScheme
 from Crypto.Hash import SHA256
 
 LOGGER = logging.getLogger(__name__)
+
 
 class Signer(abc.ABC):
     """
@@ -110,9 +112,8 @@ class GPGSigner(Signer):
             The GPG key identifier of the newly created key.
         """
         input_data = self.gpg.gen_key_input(
-            name_email=name,
-            name_real=email,
-            passphrase=self.passphrase)
+            name_email=name, name_real=email, passphrase=self.passphrase
+        )
 
         result = self.gpg.gen_key(input_data)
         self.keyid = str(result)
@@ -131,11 +132,7 @@ class GPGSigner(Signer):
             kwargs = {"default_key": self.keyid}
 
         result = self.gpg.sign(
-            data,
-            clearsign=False,
-            detach=True,
-            passphrase=self.passphrase,
-            **kwargs,
+            data, clearsign=False, detach=True, passphrase=self.passphrase, **kwargs
         )
 
         return str(result).rstrip()
@@ -181,7 +178,7 @@ class PKISigner(Signer):
         Initializes a new PKI certificate pair.
 
         Args:
-            bits: Entropy to use when generating the priatve key.
+            bits: Entropy to use when generating the private key.
         """
         key = RSA.generate(bits)
         private_key = key.export_key(passphrase=self.passphrase)
@@ -193,7 +190,7 @@ class PKISigner(Signer):
             file.write(private_key)
             file.flush()
 
-    def get_keypair(self) -> list:
+    def get_keypair(self) -> List:
         """
         Retrieves the keypair entries from disk.
 
@@ -203,7 +200,9 @@ class PKISigner(Signer):
         if self.keypair_entries is None:
             with open(self.keypair_path, "r") as file:
                 content = file.read()
-            self.keypair_entries = re.findall(r"(-{5}BEGIN([^-]+)-{5}.+-{5}END\2-{5})", content, re.DOTALL)
+            self.keypair_entries = re.findall(
+                r"(-{5}BEGIN([^-]+)-{5}.+-{5}END\2-{5})", content, re.DOTALL
+            )
             self.keypair_entries = [x[0] for x in self.keypair_entries]
         return self.keypair_entries
 
@@ -246,7 +245,8 @@ class PKISigner(Signer):
         return "{0}\n\n{1}\n{2}".format(
             PKISigner.TAG_START,
             base64.b64encode(raw_signature).decode(),
-            PKISigner.TAG_END)
+            PKISigner.TAG_END,
+        )
 
     def verify(self, data: bytes, signature: str):
         # if not self.public_key_path:
@@ -255,10 +255,11 @@ class PKISigner(Signer):
 
         digest = SHA256.new(data)
         # pylint: disable=not-callable
-        valid = self.get_public_signer().verify(digest, buffer)
+        valid = False
+        try:
+            self.get_public_signer().verify(digest, buffer)
+            valid = True
+        except ValueError:
+            ...
 
-        return {
-            "keypair_path": self.keypair_path,
-            "type": "pki",
-            "valid": valid,
-        }
+        return {"keypair_path": self.keypair_path, "type": "pki", "valid": valid}
