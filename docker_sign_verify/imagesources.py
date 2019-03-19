@@ -325,7 +325,7 @@ class ImageSource(abc.ABC):
             # pylint: disable=protected-access
             if isinstance(result, gnupg._parsers.Verify):
                 if not result.valid:
-                    raise Exception(
+                    raise RuntimeError(
                         "Verification failed for signature with key_id '{0}': {1}".format(
                             result.key_id, result.status
                         )
@@ -340,7 +340,7 @@ class ImageSource(abc.ABC):
                 LOGGER.debug("            %s", result.username)
             elif result.get("type", None) == "pki":
                 if not result["valid"]:
-                    raise Exception(
+                    raise RuntimeError(
                         "Verification failed for signature using cert: {0}".format(
                             result["keypair_path"]
                         )
