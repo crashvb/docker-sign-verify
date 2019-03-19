@@ -8,6 +8,9 @@ tmpdir:=$(shell mktemp --directory)
 
 default: build
 
+black:
+	python -m black .
+
 build:
 	python setup.py bdist_wheel sdist
 
@@ -21,7 +24,8 @@ test:
 	python -m pytest --log-cli-level info
 
 test_code:
-	python -m pylint --max-line-length=120 docker_sign_verify
+	# Note: https://github.com/PyCQA/pylint/issues/289
+	python -m pylint --disable C0330 --max-line-length=120 docker_sign_verify
 
 test_package: build
 	python -m venv $(tmpdir)

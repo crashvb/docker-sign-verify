@@ -38,7 +38,7 @@ def config_digest_signed(request):
 def image_layers():
     return [
         "sha256:94b2db70f7476c98f4c4a1b7a922136e0c5600d2d74905407ad364dcca2bf852",
-        "sha256:22426f366c51f26105aa9a6c6c9aea9fff0f21b7aabfc97870727577edaa3260"
+        "sha256:22426f366c51f26105aa9a6c6c9aea9fff0f21b7aabfc97870727577edaa3260",
     ]
 
 
@@ -65,47 +65,73 @@ def test_init(image_config: ImageConfig, image_config_signed: ImageConfig):
     assert image_config_signed
 
 
-def test_str(image_config: ImageConfig, image_config_signed: ImageConfig, json_bytes: bytes, json_bytes_signed: bytes):
+def test_str(
+    image_config: ImageConfig,
+    image_config_signed: ImageConfig,
+    json_bytes: bytes,
+    json_bytes_signed: bytes,
+):
     """Test __str__ pass-through for signed and unsigned configurations (with encoding)."""
     assert str(image_config) == json_bytes.decode("utf-8")
     assert str(image_config_signed) == json_bytes_signed.decode("utf-8")
 
 
-def test_get_config(image_config: ImageConfig, image_config_signed: ImageConfig, json_bytes: bytes,
-                    json_bytes_signed: bytes):
+def test_get_config(
+    image_config: ImageConfig,
+    image_config_signed: ImageConfig,
+    json_bytes: bytes,
+    json_bytes_signed: bytes,
+):
     """Test get_config() pass-through for signed and unsigned configurations."""
     assert image_config.get_config() == json_bytes
     assert image_config_signed.get_config() == json_bytes_signed
 
 
-def test_get_config_canonical(image_config: ImageConfig, image_config_signed: ImageConfig, json_bytes_canonical: bytes):
+def test_get_config_canonical(
+    image_config: ImageConfig,
+    image_config_signed: ImageConfig,
+    json_bytes_canonical: bytes,
+):
     """Test the canonical form for signed and unsigned configurations."""
     assert image_config.get_config_canonical() == json_bytes_canonical
     assert image_config_signed.get_config_canonical() == json_bytes_canonical
 
 
-def test_get_config_digest(image_config: ImageConfig, image_config_signed: ImageConfig, config_digest: str,
-                           config_digest_signed: str):
+def test_get_config_digest(
+    image_config: ImageConfig,
+    image_config_signed: ImageConfig,
+    config_digest: str,
+    config_digest_signed: str,
+):
     """Test digest calculation for signed and unsigned configurations."""
     assert image_config.get_config_digest() == config_digest
     assert image_config_signed.get_config_digest() == config_digest_signed
 
 
-def test_get_config_digest_canonical(image_config: ImageConfig, image_config_signed: ImageConfig,
-                                     config_digest_canonical: str):
+def test_get_config_digest_canonical(
+    image_config: ImageConfig,
+    image_config_signed: ImageConfig,
+    config_digest_canonical: str,
+):
     """Test canonical digest calculation for signed and unsigned configurations."""
     assert image_config.get_config_digest_canonical() == config_digest_canonical
     assert image_config_signed.get_config_digest_canonical() == config_digest_canonical
 
 
-def test_get_image_layers(image_config: ImageConfig, image_config_signed: ImageConfig, image_layers: list):
+def test_get_image_layers(
+    image_config: ImageConfig, image_config_signed: ImageConfig, image_layers: list
+):
     """Test image layer preservation for signed and unsigned configurations."""
     assert image_config.get_image_layers() == image_layers
     assert image_config_signed.get_image_layers() == image_layers
 
 
-def test_get_signature_data(image_config: ImageConfig, image_config_signed: ImageConfig, config_digest: str,
-                            signature: str):
+def test_get_signature_data(
+    image_config: ImageConfig,
+    image_config_signed: ImageConfig,
+    config_digest: str,
+    signature: str,
+):
     """Test signature data parsing for signed and unsigned configurations."""
     signature_data_signed = image_config_signed.get_signature_data()
     assert signature_data_signed["original_config"] == config_digest
@@ -122,7 +148,9 @@ def test_sign(image_config: ImageConfig, image_config_signed: ImageConfig):
     """Test configuration signing for signed and unsigned configurations."""
 
     # Initialize a fake signer with a predetermined signature value.
-    signature_value = "-----BEGIN FAKE SIGNATURE-----\nFAKE FAKE FAKE\n-----END FAKE SIGNATURE-----"
+    signature_value = (
+        "-----BEGIN FAKE SIGNATURE-----\nFAKE FAKE FAKE\n-----END FAKE SIGNATURE-----"
+    )
     signer = FakeSigner(signature_value)
 
     assert image_config.sign(signer) == signature_value
@@ -159,7 +187,9 @@ def test_verify_signatures(image_config: ImageConfig):
     Signer.for_signature = _signer_for_signature
 
     # The Signer's verify() method should be invoked.
-    assert image_config.verify_signatures()["results"] == [{"type": "fake", "valid": True}]
+    assert image_config.verify_signatures()["results"] == [
+        {"type": "fake", "valid": True}
+    ]
 
     # Restore the original classmethod
     Signer.for_signature = original_method
@@ -189,15 +219,14 @@ def _signer_for_signature(signature: str):
 class FakeSigner(Signer):
     """Creates and verifies docker image signatures static strings."""
 
-    def __init__(self,
-                 signature_value="-----BEGIN FAKE SIGNATURE-----\nDEFAULT FAKE SIGNATURE\n-----END FAKE SIGNATURE-----"):
+    def __init__(
+        self,
+        signature_value="-----BEGIN FAKE SIGNATURE-----\nDEFAULT FAKE SIGNATURE\n-----END FAKE SIGNATURE-----",
+    ):
         self.signature_value = signature_value
 
     def sign(self, data: bytes) -> str:
         return self.signature_value
 
     def verify(self, data: bytes, signature: str):
-        return {
-            "type": "fake",
-            "valid": True,
-        }
+        return {"type": "fake", "valid": True}

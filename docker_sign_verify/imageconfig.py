@@ -8,12 +8,12 @@ import logging
 import re
 
 import canonicaljson
+from typing import Dict
 
 from .signers import Signer
-from .utils import (
-    formatted_digest,
-    must_be_equal,
-    FormattedSHA256)
+from .utils import formatted_digest, must_be_equal, FormattedSHA256
+
+LOGGER = logging.getLogger(__name__)
 
 
 class ImageConfig:
@@ -51,13 +51,31 @@ class ImageConfig:
         if signature_data["signatures"]:
             result += "{0}:{1},".format(
                 json.dumps(ImageConfig.SIGNATURES_LABEL),
-                json.dumps(signature_data["signatures"]))
+                json.dumps(signature_data["signatures"]),
+            )
         if signature_data["original_config"]:
             result += "{0}:{1},".format(
                 json.dumps(ImageConfig.ORIGINAL_CONFIG_LABEL),
-                json.dumps(signature_data["original_config"]))
+                json.dumps(signature_data["original_config"]),
+            )
 
         return result.encode("utf-8")
+
+    @staticmethod
+    def _get_labels(config_json) -> Dict:
+        """
+        Retrieves the "Labels" dictionary from the given image configuration.
+
+        Args:
+            config_json: The image configuration from which to retrieve the dictionary.
+
+        Returns:
+            Dict: The corresponding dictionary, or an empty dictionary if NoneType.
+        """
+        labels = config_json["config"]["Labels"]
+        if labels is None:
+            labels = {}
+        return labels
 
     def _replace_signature_data(self):
         """
@@ -69,7 +87,15 @@ class ImageConfig:
 
         token_find = b'"Labels":{'
         token_replace = token_find + raw_signature_data
-        # TODO: How do we know if there should be a trailing ','
+        if self.config.find(token_find) == -1:
+            LOGGER.debug(
+                "Unable to locate labels token with existing values; retrying with empty set ..."
+            )
+            token_find = b'"Labels":null'
+            # Note: Remove trailing comma for empty set
+            token_replace = b'"Labels":{' + raw_signature_data[:-1] + b"}"
+        if self.config.find(token_find) == -1:
+            raise RuntimeError("Unable to locate labels token!")
         self._set_config(self.config.replace(token_find, token_replace, 1))
 
     def _remove_signature_data(self) -> bytes:
@@ -111,7 +137,7 @@ class ImageConfig:
         """
         config_json = copy.deepcopy(self.config_json)
         for label in [ImageConfig.SIGNATURES_LABEL, ImageConfig.ORIGINAL_CONFIG_LABEL]:
-            config_json["config"]["Labels"].pop(label, None)
+            ImageConfig._get_labels(config_json).pop(label, None)
 
         return canonicaljson.encode_canonical_json(config_json)
 
@@ -153,10 +179,9 @@ class ImageConfig:
                 signatures: String of new line separated PEM encoded signature values.
                 signatures_list: List of PEM encoded signature values.
         """
-        original_config = self.config_json["config"]["Labels"].get(
-            ImageConfig.ORIGINAL_CONFIG_LABEL, None)
-        signatures = self.config_json["config"]["Labels"].get(
-            ImageConfig.SIGNATURES_LABEL, "")
+        labels = ImageConfig._get_labels(self.config_json)
+        original_config = labels.get(ImageConfig.ORIGINAL_CONFIG_LABEL, None)
+        signatures = labels.get(ImageConfig.SIGNATURES_LABEL, "")
 
         pem_marker = r"-{5}[^-]+-{5}"
         signature_list = re.findall(r"({0}[^-]+{0})".format(pem_marker), signatures)
@@ -177,7 +202,7 @@ class ImageConfig:
         """
         self._remove_signature_data()
 
-        labels = self.config_json["config"]["Labels"]
+        labels = ImageConfig._get_labels(self.config_json)
         if original_config is not None:
             labels[ImageConfig.ORIGINAL_CONFIG_LABEL] = original_config
         else:
@@ -187,6 +212,7 @@ class ImageConfig:
             labels[ImageConfig.SIGNATURES_LABEL] = signatures
         else:
             labels.pop(ImageConfig.SIGNATURES_LABEL, None)
+        self.config_json["config"]["Labels"] = labels
 
         self._replace_signature_data()
 
@@ -212,24 +238,25 @@ class ImageConfig:
             # It is not reasonably possible to reproduce the hash of the
             # original image configuration at this point.
             if not original_config:
-                raise Exception("Refusing to sign; signature(s) exist without original config hash!")
+                raise RuntimeError(
+                    "Refusing to sign; signature(s) exist without original config hash!"
+                )
         else:
             if original_config:
-                logging.warning("Original config hash found without signatures;overriding!")
-            signature_data["original_config"] = self.get_config_digest()
-            original_config = signature_data["original_config"]
+                LOGGER.warning(
+                    "Original config hash found without signatures;overriding!"
+                )
+            original_config = self.get_config_digest()
 
         digest = self.get_config_digest_canonical().encode("utf-8")
         # if original_config and digest != original_config:
-        #    raise Exception("Refusing to sign; embedded and calculated original config values are inconsistent!")
+        #    raise RuntimeError("Refusing to sign; embedded and calculated original config values are inconsistent!")
 
         signature = signer.sign(digest)
         if not signature:
             raise RuntimeError("Failed to create signature!")
         signature_data["signatures"] += signature
-        self.set_signature_data(
-            signature_data["original_config"],
-            signature_data["signatures"])
+        self.set_signature_data(original_config, signature_data["signatures"])
 
         return signature
 
@@ -244,7 +271,7 @@ class ImageConfig:
         """
         signature_data = self.get_signature_data()
         if not signature_data["signature_list"]:
-            raise Exception("Image does not contain any signatures!")
+            raise RuntimeError("Image does not contain any signatures!")
 
         # Remove the signatures and verify the original image configuration ...
         config_original = copy.deepcopy(self)
@@ -252,7 +279,8 @@ class ImageConfig:
         must_be_equal(
             signature_data["original_config"],
             config_original.get_config_digest(),
-            "Image config digest mismatch (2)")
+            "Image config digest mismatch (2)",
+        )
 
         # Verify the image signatures ...
         digest = config_original.get_config_digest_canonical().encode("utf-8")
@@ -262,10 +290,7 @@ class ImageConfig:
             result = signer.verify(digest, signature)
             results.append(result)
 
-        return {
-            "signature_data": signature_data,
-            "results": results,
-        }
+        return {"signature_data": signature_data, "results": results}
 
     def unsign(self):
         """Removes all signatures fro the image configuration."""

@@ -15,6 +15,7 @@ def to_image_name(context, param, value: str) -> ImageName:
         result = [ImageName.parse(v) for v in value]
     return result
 
+
 # pylint: disable=too-few-public-methods
 class HiddenPassword:
     """Helper class to mask password input."""

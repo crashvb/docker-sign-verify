@@ -2,13 +2,15 @@
 
 """Class that provides parsing and formatting of docker image names."""
 
+from typing import Dict, Union
+
 
 class ImageName:
     """
     Docker image name abstraction.
     """
 
-    def __init__(self, endpoint: str, image: str, tag: str = None):
+    def __init__(self, endpoint: Union[str, None], image: str, tag: str = None):
         """
         Args:
             endpoint: Endpoint address for fully qualified image names.
@@ -29,7 +31,7 @@ class ImageName:
         return result
 
     @staticmethod
-    def _parse_string(string: str) -> dict:
+    def _parse_string(string: str) -> Dict:
         """
         Parses the endpoint, image, and tag from a given string.
 
@@ -42,10 +44,7 @@ class ImageName:
                 image: The name of the image; the image name and optional namespace.
                 tag: The tag name.
         """
-        result = {
-            "endpoint": None,
-            "image": None,
-            "tag": None}
+        result = {"endpoint": None, "image": None, "tag": None}
 
         segments = string.split("/")
 
