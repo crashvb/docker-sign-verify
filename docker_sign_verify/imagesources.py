@@ -860,11 +860,16 @@ class RegistryV2ImageSource(ImageSource):
             {"Content-Type": RegistryV2ImageSource.MANIFEST_MIME_TYPE},
         )
 
-        return requests.put(url, headers=headers, data=str(manifest).encode("utf-8"))
+        response = requests.put(
+            url, headers=headers, data=str(manifest).encode("utf-8")
+        )
+        must_be_equal(201, response.status_code, "Failed to upload manifest")
+
+        return response
 
     def layer_exists(self, image_name: ImageName, layer: FormattedSHA256) -> bool:
         url = RegistryV2ImageSource.BLOB_URL_PATTERN.format(
-            image_name.endpoint, image_name, layer
+            image_name.endpoint, image_name.image, layer
         )
         headers = self._get_request_headers(image_name.endpoint)
         response = requests.head(url, headers=headers)
@@ -908,7 +913,7 @@ class RegistryV2ImageSource(ImageSource):
         elif isinstance(dest_image_source, RegistryV2ImageSource):
             manifest_signed = copy.deepcopy(manifest)  # type: RegistryV2Manifest
             manifest_signed.override_config(
-                config_digest_signed, str(len(image_config.get_config()))
+                config_digest_signed, len(image_config.get_config())
             )
             data["manifest_signed"] = manifest_signed
             dest_image_source.put_manifest(manifest_signed, dest_image_name)

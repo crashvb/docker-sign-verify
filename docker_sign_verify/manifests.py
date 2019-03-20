@@ -153,7 +153,7 @@ class RegistryV2Manifest(Manifest):
     Image source manifest for docker archives.
     """
 
-    def override_config(self, config_digest: FormattedSHA256, size: str):
+    def override_config(self, config_digest: FormattedSHA256, size: int):
         """
         Assigns the image configuration digest and size in the image source manifest.
 
