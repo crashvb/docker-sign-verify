@@ -1,11 +1,13 @@
-import logging
+#!/usr/bin/env python
+
+"""Signer tests."""
+
 import os
 import pytest
 import tempfile
 import shutil
 
-from pathlib import Path
-from docker_sign_verify.signers import GPGSigner, PKISigner
+from docker_sign_verify import GPGSigner, PKISigner
 
 
 @pytest.fixture()
@@ -18,6 +20,7 @@ def gpgsigner(request):
     request.addfinalizer(_remove_homedir)
     signer = GPGSigner(None, "testing", homedir)
     signer._debug_init_store()
+
     return signer
 
 
@@ -34,7 +37,7 @@ def pkisigner(request):
     return signer
 
 
-@pytest.mark.skip(reason="gpg2 key generation is currently broken")
+# @pytest.mark.skip(reason="gpg2 key generation is currently broken")
 def test_gpgsigner(caplog, gpgsigner: GPGSigner):
     """Test configuration signing and verification using GPG."""
 
@@ -50,7 +53,7 @@ def test_gpgsigner(caplog, gpgsigner: GPGSigner):
     # Verify the generated signature against the test data ...
     result = gpgsigner.verify(data, signature)
     assert result.valid
-    assert gpgsigner.keyid.endswith(result.key_id)
+    assert gpgsigner.keyid == result.key_id
     assert result.status == "signature valid"
 
 

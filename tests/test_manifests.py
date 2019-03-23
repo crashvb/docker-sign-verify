@@ -1,14 +1,19 @@
+#!/usr/bin/env python
+
+"""Manifest tests."""
+
 import json
 import pytest
 
 from docker_sign_verify import (
     ArchiveManifest,
     DeviceMapperRepositoryManifest,
+    FormattedSHA256,
     ImageName,
     RegistryV2Manifest,
-    FormattedSHA256,
 )
-from pathlib import Path
+
+from .testutils import get_test_data
 
 
 @pytest.fixture()
@@ -25,17 +30,17 @@ def sha256_archive_layer(formattedsha256: FormattedSHA256):
 
 @pytest.fixture
 def manifest_archive(request):
-    return _get_test_data(request, "manifest_archive.json")
+    return get_test_data(request, __name__, "manifest_archive.json")
 
 
 @pytest.fixture
 def manifest_registry(request):
-    return _get_test_data(request, "manifest_registry.json")
+    return get_test_data(request, __name__, "manifest_registry.json")
 
 
 @pytest.fixture
 def manifest_repository(request):
-    return _get_test_data(request, "manifest_repository.json")
+    return get_test_data(request, __name__, "manifest_repository.json")
 
 
 @pytest.fixture
@@ -172,7 +177,7 @@ def test_registry_override_config(
     registry_v2_manifest: RegistryV2Manifest, formattedsha256: FormattedSHA256
 ):
     """Test overriding manifest values."""
-    size = "1234"
+    size = 1234
     registry_v2_manifest.override_config(formattedsha256, size)
     assert registry_v2_manifest.get_config_digest() == formattedsha256
     assert registry_v2_manifest.json["config"]["size"] == size
@@ -240,16 +245,3 @@ def test_repository_get_config_digest(
 #    """Test manifest layer retrieval."""
 #    with pytest.raises(NotImplementedError):
 #        devicemapper_repository_manifest.get_layers()
-
-
-def _get_test_data(request, name, mode="rb"):
-    """Helper method to retrieve test data."""
-    key = "imageconfig/{0}".format(name)
-    result = request.config.cache.get(key, None)
-    if result is None:
-        path = Path(request.fspath).parent.joinpath(name)
-        with open(path, mode) as file:
-            result = file.read()
-            # TODO: How do we / Should we serialize binary data?
-            # request.config.cache.set(key, result)
-    return result

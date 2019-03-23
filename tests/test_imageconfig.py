@@ -1,37 +1,43 @@
+#!/usr/bin/env python
+
+"""ImageConfig tests."""
+
 import pytest
 
 from docker_sign_verify import ImageConfig, Signer
-from pathlib import Path
+
+from .stubs import _signer_for_signature, FakeSigner
+from .testutils import get_test_data
 
 
 @pytest.fixture
 def json_bytes(request):
-    return _get_test_data(request, "config.json")
+    return get_test_data(request, __name__, "config.json")
 
 
 @pytest.fixture
 def json_bytes_canonical(request):
-    return _get_test_data(request, "config_canonical.json")
+    return get_test_data(request, __name__, "config_canonical.json")
 
 
 @pytest.fixture
 def json_bytes_signed(request):
-    return _get_test_data(request, "config_signed.json")
+    return get_test_data(request, __name__, "config_signed.json")
 
 
 @pytest.fixture
 def config_digest(request):
-    return _get_test_data(request, "config.json.digest", "r")
+    return get_test_data(request, __name__, "config.json.digest", "r")
 
 
 @pytest.fixture
 def config_digest_canonical(request):
-    return _get_test_data(request, "config_canonical.json.digest", "r")
+    return get_test_data(request, __name__, "config_canonical.json.digest", "r")
 
 
 @pytest.fixture
 def config_digest_signed(request):
-    return _get_test_data(request, "config_signed.json.digest", "r")
+    return get_test_data(request, __name__, "config_signed.json.digest", "r")
 
 
 @pytest.fixture
@@ -56,7 +62,7 @@ def image_config_signed(json_bytes_signed):
 
 @pytest.fixture
 def signature(request):
-    return _get_test_data(request, "signature", "r")
+    return get_test_data(request, __name__, "signature", "r")
 
 
 def test_init(image_config: ImageConfig, image_config_signed: ImageConfig):
@@ -147,14 +153,9 @@ def test_get_signature_data(
 def test_sign(image_config: ImageConfig, image_config_signed: ImageConfig):
     """Test configuration signing for signed and unsigned configurations."""
 
-    # Initialize a fake signer with a predetermined signature value.
-    signature_value = (
-        "-----BEGIN FAKE SIGNATURE-----\nFAKE FAKE FAKE\n-----END FAKE SIGNATURE-----"
-    )
-    signer = FakeSigner(signature_value)
-
-    assert image_config.sign(signer) == signature_value
-    assert image_config_signed.sign(signer) == signature_value
+    signer = FakeSigner()
+    assert image_config.sign(signer) == signer.signature_value
+    assert image_config_signed.sign(signer) == signer.signature_value
 
     # Previously unsigned configurations should now contain the new signature.
     assert b"BEGIN FAKE SIGNATURE" in image_config.get_config()
@@ -182,7 +183,7 @@ def test_verify_signatures(image_config: ImageConfig):
         image_config.verify_signatures()
     assert str(e.value) == "Unsupported signature type!"
 
-    # Replace the classmethod for resolving signature providers ...
+    # Replace the class method for resolving signature providers ...
     original_method = Signer.for_signature
     Signer.for_signature = _signer_for_signature
 
@@ -191,42 +192,54 @@ def test_verify_signatures(image_config: ImageConfig):
         {"type": "fake", "valid": True}
     ]
 
-    # Restore the original classmethod
+    # Restore the original class method
     Signer.for_signature = original_method
 
 
-def _get_test_data(request, name, mode="rb"):
-    """Helper method to retrieve test data."""
-    key = "imageconfig/{0}".format(name)
-    result = request.config.cache.get(key, None)
-    if result is None:
-        path = Path(request.fspath).parent.joinpath(name)
-        with open(path, mode) as file:
-            result = file.read()
-            # TODO: How do we / Should we serialize binary data?
-            # request.config.cache.set(key, result)
-    return result
+def test_unsign(image_config: ImageConfig, image_config_signed: ImageConfig):
+    """Test configuration unsigning for signed and unsigned configurations."""
+
+    image_config.unsign()
+    image_config_signed.unsign()
+
+    # Previously unsigned configurations should still contain no signature.
+    assert b"BEGIN FAKE SIGNATURE" not in image_config.get_config()
+
+    # Previously signed configurations should now contain no signature(s).
+    assert b"BEGIN FAKE SIGNATURE" not in image_config_signed.get_config()
+    assert b"BEGIN PGP SIGNATURE" not in image_config_signed.get_config()
 
 
-def _signer_for_signature(signature: str):
-    """Override of docker_sign_verify.Signer::_for_signature()."""
-    if "FAKE SIGNATURE" in signature:
-        return FakeSigner()
-    else:
-        raise RuntimeError("Unsupported signature type!")
+def test_acceptance_sign_unsign_symmetry(
+    image_config: ImageConfig, image_config_signed: ImageConfig
+):
+    """Tests that sign and unsign are (mostly) symmetric operations."""
 
+    config_digest = image_config.get_config_digest()
 
-class FakeSigner(Signer):
-    """Creates and verifies docker image signatures static strings."""
+    # 1. Sign
+    signer = FakeSigner()
+    assert image_config.sign(signer) == signer.signature_value
+    assert image_config_signed.sign(signer) == signer.signature_value
 
-    def __init__(
-        self,
-        signature_value="-----BEGIN FAKE SIGNATURE-----\nDEFAULT FAKE SIGNATURE\n-----END FAKE SIGNATURE-----",
-    ):
-        self.signature_value = signature_value
+    # Previously unsigned configurations should now contain the new signature.
+    assert b"BEGIN FAKE SIGNATURE" in image_config.get_config()
 
-    def sign(self, data: bytes) -> str:
-        return self.signature_value
+    # Previously signed configurations should now contain the original signature(s) and the new signature.
+    assert b"BEGIN FAKE SIGNATURE" in image_config_signed.get_config()
+    assert b"BEGIN PGP SIGNATURE" in image_config_signed.get_config()
 
-    def verify(self, data: bytes, signature: str):
-        return {"type": "fake", "valid": True}
+    # 2. Unsign
+    image_config.unsign()
+    image_config_signed.unsign()
+
+    # Configurations where we added the first signature should be reverted.
+    assert b"BEGIN FAKE SIGNATURE" not in image_config.get_config()
+
+    # Configurations where we appended a signature should now contain no signature(s).
+    assert b"BEGIN FAKE SIGNATURE" not in image_config_signed.get_config()
+    assert b"BEGIN PGP SIGNATURE" not in image_config_signed.get_config()
+
+    assert image_config.get_config_digest() == config_digest
+    # Note: We cannot compare the original signed digest, as we are removing *all* signatures, not just the one
+    #       we are appending.

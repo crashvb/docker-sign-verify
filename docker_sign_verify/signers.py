@@ -163,7 +163,7 @@ class PKISigner(Signer):
         Reference: https://www.digicert.com/ssl-support/pem-ssl-creation.htm
         Args:
             keypair_path: Path to a file containing the entire trust chain and private key, PEM encoded.
-            passphrase: The passphrase used to unleck the private key.
+            passphrase: The passphrase used to unlock the private key.
         """
         self.keypair_entries = None
         self.keypair_path = keypair_path
