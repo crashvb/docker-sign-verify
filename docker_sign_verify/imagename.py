@@ -2,6 +2,8 @@
 
 """Class that provides parsing and formatting of docker image names."""
 
+import os
+
 from typing import Dict, Union
 
 
@@ -9,6 +11,14 @@ class ImageName:
     """
     Docker image name abstraction.
     """
+
+    DEFAULT_REGISTRY_ENDPOINT = os.environ.get(
+        "DSV_DEFAULT_REGISTRY", "index.docker.io"
+    )
+
+    DEFAULT_REGISTRY_NAMESPACE = os.environ.get("DSV_DEFAULT_NAMESPACE", "library")
+
+    DEFAULT_REGISTRY_TAG = os.environ.get("DSV_DEFAULT_TAG", "latest")
 
     def __init__(self, endpoint: Union[str, None], image: str, tag: str = None):
         """
@@ -40,7 +50,7 @@ class ImageName:
 
         Returns:
             dict:
-                endpoint: The image endpoint; address with optional port.
+                endpoint: The registry endpoint; address with optional port.
                 image: The name of the image; the image name and optional namespace.
                 tag: The tag name.
         """
@@ -97,3 +107,41 @@ class ImageName:
         """
         parsed = ImageName._parse_string(image_name)
         return ImageName(parsed["endpoint"], parsed["image"], parsed["tag"])
+
+    def resolve_endpoint(self) -> str:
+        """
+        Resolves the registry endpoint.
+
+        Returns:
+            The explicit registry endpoint.
+        """
+        if self.endpoint:
+            return self.endpoint
+        else:
+            return ImageName.DEFAULT_REGISTRY_ENDPOINT
+
+    def resolve_image(self) -> str:
+        """
+        Resolves the name of the image.
+
+        Returns:
+            The explicit name of the image, with namespace.
+        """
+
+        segments = self.image.split("/")
+        if len(segments) < 2:
+            return "{0}/{1}".format(ImageName.DEFAULT_REGISTRY_NAMESPACE, self.image)
+        else:
+            return self.image
+
+    def resolve_tag(self) -> str:
+        """
+        Retrieves resolves the tag name.
+
+        Returns:
+            The explicit tag name
+        """
+        if self.tag:
+            return self.tag
+        else:
+            return ImageName.DEFAULT_REGISTRY_TAG

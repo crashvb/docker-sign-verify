@@ -1,6 +1,10 @@
+#!/usr/bin/env python
+
+"""ImageName tests."""
+
 import pytest
 
-from docker_sign_verify.imagename import ImageName
+from docker_sign_verify import ImageName
 
 
 @pytest.fixture()
@@ -55,7 +59,7 @@ def test_parse_string():
 
 def test_parse():
     """Test initialization via parsed strings."""
-    (endpoint, image, tag) = ["address:port", "namespace/iamge", "tag"]
+    (endpoint, image, tag) = ["address:port", "namespace/image", "tag"]
     image_name = ImageName.parse("{0}/{1}:{2}".format(endpoint, image, tag))
     assert image_name.endpoint == endpoint
     assert image_name.image == image
@@ -75,3 +79,6 @@ def test_image(image_name: ImageName):
 def test_tag(image_name: ImageName):
     """Tests endpoint tag."""
     assert image_name.tag == "tag"
+
+
+# TODO: Test resolve methods ...

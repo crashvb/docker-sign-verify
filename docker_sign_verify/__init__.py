@@ -1,21 +1,24 @@
 #!/usr/bin/env python
 
-"""Utilties for verifying docker image integrity and signatures."""
+"""Utilities for verifying docker image integrity and signatures."""
 
 import docker_sign_verify.utils as Utils
 from .manifests import (
     ArchiveManifest,
-    RegistryV2Manifest,
     DeviceMapperRepositoryManifest,
+    Manifest,
+    RegistryV2Manifest,
 )
 from .signers import GPGSigner, PKISigner, Signer
 from .imageconfig import ImageConfig
 from .imagename import ImageName
-from .utils import FormattedSHA256
 from .imagesources import (
     ArchiveImageSource,
-    RegistryV2ImageSource,
     DeviceMapperRepositoryImageSource,
+    ImageSource,
+    RegistryV2ImageSource,
 )
+from .utils import FormattedSHA256
+
 
 __version__ = "0.3.4.dev0"

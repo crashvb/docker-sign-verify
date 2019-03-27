@@ -85,14 +85,17 @@ def sign(context):
 
 
 @click.group()
+@click.option(
+    "--dry-run", help="Do not write to destination image sources.", is_flag=True
+)
 @logging_options
 @click.pass_context
-def cli(context, verbosity: int = 2):
+def cli(context, dry_run: False, verbosity: int = 2):
     """Creates and embeds signatures into docker images."""
 
     set_log_levels(verbosity)
 
-    context.obj = {}
+    context.obj = {"dry_run": dry_run}
 
 
 @cli.command()
@@ -122,7 +125,9 @@ def archive(
     context.obj["sigtype"] = sigtype
     context.obj["src_image_name"] = src_image_name
     context.obj["dest_image_name"] = dest_image_name
-    context.obj["imagesource"] = ArchiveImageSource(archive)
+    context.obj["imagesource"] = ArchiveImageSource(
+        archive=archive, dry_run=context.obj["dry_run"]
+    )
     sign(context)
 
 
@@ -144,7 +149,7 @@ def registry(
     context.obj["sigtype"] = sigtype
     context.obj["src_image_name"] = src_image_name
     context.obj["dest_image_name"] = dest_image_name
-    context.obj["imagesource"] = RegistryV2ImageSource()
+    context.obj["imagesource"] = RegistryV2ImageSource(dry_run=context.obj["dry_run"])
     sign(context)
 
 
@@ -166,7 +171,9 @@ def repository(
     context.obj["sigtype"] = sigtype
     context.obj["src_image_name"] = src_image_name
     context.obj["dest_image_name"] = dest_image_name
-    context.obj["imagesource"] = DeviceMapperRepositoryImageSource()
+    context.obj["imagesource"] = DeviceMapperRepositoryImageSource(
+        dry_run=context.obj["dry_run"]
+    )
     sign(context)
 
 

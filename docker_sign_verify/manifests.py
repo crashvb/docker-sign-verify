@@ -42,7 +42,7 @@ class Manifest(abc.ABC):
         """
 
     @abc.abstractmethod
-    def get_layers(self, image_name: ImageName = None) -> list:
+    def get_layers(self, image_name: ImageName = None) -> List[FormattedSHA256]:
         """
         Retrieves the listing of manifest layer identifiers.
 
@@ -50,12 +50,12 @@ class Manifest(abc.ABC):
             image_name: The image name.
 
         Returns:
-            list: layer identifiers in the form: <hash type>:<digest value>.
+            list: Layer identifiers in the form: <hash type>:<digest value>.
         """
 
-        # TODO: Move weird, type-sepcific, manifest logic to these methods
-        # @abc.abstractmethod
-        # def copyfrom(self, src_image_source: ImageSource, dest_image_name, config_digest_signed) -> str:
+    # TODO: Move weird, type-specific, manifest logic to these methods
+    # @abc.abstractmethod
+    # def copyfrom(self, src_image_source: ImageSource, dest_image_name, config_digest_signed) -> str:
 
 
 class ArchiveManifest(Manifest):
@@ -117,7 +117,10 @@ class ArchiveManifest(Manifest):
         raise RuntimeError("Unable to locate configuration in archive manifest!")
 
     def append_config(
-        self, config_digest: FormattedSHA256, layers: List, repotags: List = None
+        self,
+        config_digest: FormattedSHA256,
+        layers: List[FormattedSHA256],
+        repotags: List = None,
     ):
         """
         Appends an image configuration dictionary to the image source manifest
@@ -143,17 +146,17 @@ class ArchiveManifest(Manifest):
         config = self.get_config(image_name)
         return FormattedSHA256(config["Config"][:-5])
 
-    def get_layers(self, image_name: ImageName = None) -> list:
+    def get_layers(self, image_name: ImageName = None) -> List[FormattedSHA256]:
         layers = self.get_config(image_name)["Layers"]
         return [ArchiveManifest.layer_to_digest(l) for l in layers]
 
 
 class RegistryV2Manifest(Manifest):
     """
-    Image source manifest for docker archives.
+    Image source manifest for docker registries.
     """
 
-    def override_config(self, config_digest: FormattedSHA256, size: int):
+    def set_config_digest(self, config_digest: FormattedSHA256, size: int):
         """
         Assigns the image configuration digest and size in the image source manifest.
 
@@ -164,6 +167,25 @@ class RegistryV2Manifest(Manifest):
         if self.json["schemaVersion"] == 2:
             self.json["config"]["digest"] = config_digest
             self.json["config"]["size"] = size
+        else:
+            raise RuntimeError(
+                "Unsupported schema version: {0}".format(self.json["schemaVersion"])
+            )
+
+    def set_layers(self, layers: List[FormattedSHA256]):
+        """
+        Assigns the list of manifest layer identifiers.
+
+        Note: It is not the intention of this utility to modify layer content! As such we only support updating the
+              manifest layer identifiers as part of layer replication between two disjoint registries. (i.e.
+              Modification of the overall layer count, order, or individual layer sizes is explicitly not implemented.)
+
+        Args:
+            layers: List of manifest layer identifiers in the form: <hash type>:<digest_value>.
+        """
+        if self.json["schemaVersion"] == 2:
+            for i, layer in enumerate(self.json["layers"]):
+                layer["digest"] = layers[i]
         else:
             raise RuntimeError(
                 "Unsupported schema version: {0}".format(self.json["schemaVersion"])
@@ -181,7 +203,7 @@ class RegistryV2Manifest(Manifest):
 
         return result
 
-    def get_layers(self, image_name: ImageName = None) -> list:
+    def get_layers(self, image_name: ImageName = None) -> List[FormattedSHA256]:
         if self.json["schemaVersion"] == 2:
             result = [FormattedSHA256.parse(l["digest"]) for l in self.json["layers"]]
         else:
@@ -194,7 +216,7 @@ class RegistryV2Manifest(Manifest):
 
 class DeviceMapperRepositoryManifest(Manifest):
     """
-    Image source manifest for docker repositories (singular).
+    Image source manifest for docker repositories.
     """
 
     @staticmethod
@@ -256,7 +278,7 @@ class DeviceMapperRepositoryManifest(Manifest):
         image = self.json["Repositories"].get(key, {})
         return FormattedSHA256.parse(image.get(str(image_name), None))
 
-    def get_layers(self, image_name: ImageName = None) -> list:
+    def get_layers(self, image_name: ImageName = None) -> List[FormattedSHA256]:
         # TODO: How can this be reimplemented to avoid duplicate code?
         DM_CONTENT_ROOT = Path(
             "/var/lib/docker/image/devicemapper/imagedb/content/sha256"

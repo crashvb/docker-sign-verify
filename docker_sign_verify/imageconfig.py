@@ -106,7 +106,22 @@ class ImageConfig:
             bytes: as defined by :func:~docker_sign_verify.ImageConfig._construct_json_fragment.
         """
         raw_signature_data = self._construct_json_fragment()
-        self._set_config(self.config.replace(raw_signature_data, b"", 1))
+
+        # Remove with trailing comma ...
+        token_find = raw_signature_data
+        token_replace = b""
+        config = self.config.replace(token_find, token_replace, 1)
+
+        # ... then without ...
+        token_find = raw_signature_data[:-1]
+        config = config.replace(token_find, token_replace, 1)
+
+        # Remove empty labels ...
+        token_find = b'"Labels":{}'
+        token_replace = b'"Labels":null'
+        config = config.replace(token_find, token_replace, 1)
+
+        self._set_config(config)
         return raw_signature_data
 
     def _set_config(self, config: bytes):
@@ -175,7 +190,7 @@ class ImageConfig:
 
         Returns:
             dict:
-                original_config: SHA256 digest value corresponding to the unsigned raw image configuration.
+                original_config: SHA256 digest value corresponding to the unsigned raw image configuration, or None.
                 signatures: String of new line separated PEM encoded signature values.
                 signatures_list: List of PEM encoded signature values.
         """
@@ -275,7 +290,7 @@ class ImageConfig:
 
         # Remove the signatures and verify the original image configuration ...
         config_original = copy.deepcopy(self)
-        config_original.set_signature_data()
+        config_original._remove_signature_data()
         must_be_equal(
             signature_data["original_config"],
             config_original.get_config_digest(),

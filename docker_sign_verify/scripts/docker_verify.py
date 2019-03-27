@@ -70,7 +70,7 @@ def archive(context, images: List, archive: str):
     """Operates on docker-save produced archives."""
 
     context.obj["images"] = images
-    context.obj["imagesource"] = ArchiveImageSource(archive)
+    context.obj["imagesource"] = ArchiveImageSource(archive=archive)
     verify(context)
 
 
