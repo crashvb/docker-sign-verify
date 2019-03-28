@@ -153,7 +153,9 @@ class ArchiveManifest(Manifest):
 
 class RegistryV2Manifest(Manifest):
     """
-    Image source manifest for docker registries.
+    Image source manifest for docker registries, as defined in:
+
+    https://github.com/docker/distribution/blob/master/docs/spec/manifest-v2-2.md
     """
 
     def set_config_digest(self, config_digest: FormattedSHA256, size: int):

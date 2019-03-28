@@ -1,14 +1,20 @@
 #!/usr/bin/env python
 
-"""Abstraction of a docker image configuration."""
+"""
+Abstraction of a docker image configuration, as defined in:
+
+https://github.com/moby/moby/blob/master/image/spec/v1.md
+(eventually, https://github.com/opencontainers/image-spec/blob/master/config.md)
+"""
 
 import copy
 import json
 import logging
 import re
 
-import canonicaljson
 from typing import Dict
+
+import canonicaljson
 
 from .signers import Signer
 from .utils import formatted_digest, must_be_equal, FormattedSHA256
@@ -72,9 +78,17 @@ class ImageConfig:
         Returns:
             Dict: The corresponding dictionary, or an empty dictionary if NoneType.
         """
-        labels = config_json["config"]["Labels"]
+
+        # Note: We need to handle both key cases, as Red Hat does not conform to the standard.
+        key = "Config"
+        try:
+            labels = config_json[key]["Labels"]
+        except KeyError:
+            key = "config"
+            labels = config_json[key]["Labels"]
+
         if labels is None:
-            labels = {}
+            config_json[key]["Labels"] = labels = {}
         return labels
 
     def _replace_signature_data(self):
@@ -227,7 +241,6 @@ class ImageConfig:
             labels[ImageConfig.SIGNATURES_LABEL] = signatures
         else:
             labels.pop(ImageConfig.SIGNATURES_LABEL, None)
-        self.config_json["config"]["Labels"] = labels
 
         self._replace_signature_data()
 

@@ -57,7 +57,6 @@ class FakeRegistryV2ImageSourceNoLabels(ImageSource):
         This method is a testing shortcut.
 
         Args:
-            image_source: The source image source.
             image_name: The name of the image to be signed.
 
         Returns:
@@ -65,8 +64,9 @@ class FakeRegistryV2ImageSourceNoLabels(ImageSource):
         """
         # pylint: disable=protected-access
         result = self._sign_image_config(FakeSigner(), image_name)
+
         self.config = result["image_config"]
-        self.manifest.override_config(
+        self.manifest.set_config_digest(
             result["image_config"].get_config_digest(),
             len(result["image_config"].get_config()),
         )

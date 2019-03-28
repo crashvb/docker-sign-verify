@@ -21,6 +21,7 @@ from urllib.parse import urlparse
 
 import gnupg  # Needed for type checking
 import requests
+from requests.models import Response
 import www_authenticate
 
 from .manifests import (
@@ -688,17 +689,19 @@ class RegistryV2ImageSource(ImageSource):
 
         return headers
 
-    def monolithic_blob_upload(self, image_name: ImageName, blob, digest=None):
+    def monolithic_blob_upload(
+        self, image_name: ImageName, blob, digest: FormattedSHA256 = None
+    ) -> Response:
         """
         Performs a monolithic upload of an image blob.
 
         Args:
-            image_name: TODO
-            blob: TODO
-            digest: TODO
+            image_name: The name of the target repository.
+            blob: The data to be uploaded.
+            digest: Digest of uploaded blob.
 
         Returns:
-            TODO
+            The underlying response.
         """
         url = RegistryV2ImageSource.BLOB_URL_PATTERN.format(
             image_name.resolve_endpoint(), image_name.resolve_image(), "uploads/"
@@ -708,22 +711,24 @@ class RegistryV2ImageSource(ImageSource):
         )
         if not digest:
             digest = formatted_digest(blob)
-        response = requests.put(
+        response = requests.post(
             url, params={"digest": digest}, headers=headers, data=blob
         )
-        must_be_equal(200, response.status_code, "Failed to upload blob")
+        must_be_equal(202, response.status_code, "Failed to upload blob")
 
+        # TODO: Do we need to emulate the Docker-Content-Digest return type?
+        LOGGER.fatal("HEADERS: %s", response.headers)
         return response
 
-    def initiate_resumable_blob_upload(self, image_name: ImageName):
+    def initiate_resumable_blob_upload(self, image_name: ImageName) -> Response:
         """
         Starts a resumable upload of an image blob.
 
         Args:
-            image_name: TODO
+            image_name: The name of the target repository.
 
         Returns:
-            TODO
+            The underlying response.
         """
         url = RegistryV2ImageSource.BLOB_URL_PATTERN.format(
             image_name.resolve_endpoint(), image_name.resolve_image(), "uploads/"
@@ -734,17 +739,18 @@ class RegistryV2ImageSource(ImageSource):
         must_be_equal(
             202, response.status_code, "Failed to initiate resumable blob upload"
         )
-
         return response
 
-    def resume_blob_upload(self, location, offset, chunk):
+    def resume_blob_upload(self, location, offset, chunk) -> Response:
         """
         Continues a resumable upload of an image blob.
 
         Args:
-            location: TODO
-            offset: TODO
-            chunk: TODO
+            location:
+                The Resumable location provided from
+                :func:~docker_sign_verify.RegistryV2ImageSource.initiate_resumable_blob_upload.
+            offset: Range of bytes identifying the desired block of content represented by the body.
+            chunk: The chunk of data to be uploaded.
 
         Returns:
             TODO
@@ -761,17 +767,21 @@ class RegistryV2ImageSource(ImageSource):
 
         return response
 
-    def complete_resumable_blob_upload(self, location, digest, chunk=None):
+    def complete_resumable_blob_upload(
+        self, location, digest: FormattedSHA256, chunk=None
+    ) -> FormattedSHA256:
         """
-        Finishes a resumable  upload of an image blob.
+        Finishes a resumable upload of an image blob.
 
         Args:
-            location: TODO
-            digest: TODO
-            chunk: TODO
+            location:
+                The Resumable location provided from
+                :func:~docker_sign_verify.RegistryV2ImageSource.initiate_resumable_blob_upload.
+            digest: Digest of uploaded blob.
+            chunk: The chunk of data to be uploaded.
 
         Returns:
-            TODO
+            FormattedSHA256: Digest of the targeted content for the request.
         """
         headers = self._get_request_headers(
             ImageName.parse(urlparse(location).netloc + "/"),
@@ -864,12 +874,13 @@ class RegistryV2ImageSource(ImageSource):
         if self.dry_run:
             LOGGER.debug("Dry Run: skipping put_image_layer")
             return
-        # TODO: Figure out why monolithic returns 400 ???
-        # self.monolithic_blob_upload(image, config)
 
-        location = self.initiate_resumable_blob_upload(image_name).headers["location"]
         digest = formatted_digest(content)
 
+        # TODO: Why doesn't this work?
+        # return self.monolithic_blob_upload(image_name, content, digest)
+
+        location = self.initiate_resumable_blob_upload(image_name).headers["location"]
         return self.complete_resumable_blob_upload(location, digest, content)
 
     def put_image_layer_from_disk(self, image_name: ImageName, file):

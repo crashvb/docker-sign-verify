@@ -117,8 +117,8 @@ class ImageName:
         """
         if self.endpoint:
             return self.endpoint
-        else:
-            return ImageName.DEFAULT_REGISTRY_ENDPOINT
+
+        return ImageName.DEFAULT_REGISTRY_ENDPOINT
 
     def resolve_image(self) -> str:
         """
@@ -131,8 +131,8 @@ class ImageName:
         segments = self.image.split("/")
         if len(segments) < 2:
             return "{0}/{1}".format(ImageName.DEFAULT_REGISTRY_NAMESPACE, self.image)
-        else:
-            return self.image
+
+        return self.image
 
     def resolve_tag(self) -> str:
         """
@@ -143,5 +143,5 @@ class ImageName:
         """
         if self.tag:
             return self.tag
-        else:
-            return ImageName.DEFAULT_REGISTRY_TAG
+
+        return ImageName.DEFAULT_REGISTRY_TAG

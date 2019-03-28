@@ -178,7 +178,7 @@ def test_registry_override_config(
 ):
     """Test overriding manifest values."""
     size = 1234
-    registry_v2_manifest.override_config(formattedsha256, size)
+    registry_v2_manifest.set_config_digest(formattedsha256, size)
     assert registry_v2_manifest.get_config_digest() == formattedsha256
     assert registry_v2_manifest.json["config"]["size"] == size
 

@@ -2,6 +2,8 @@
 
 """Utilities for verifying docker image integrity and signatures."""
 
+# TODO: Revamp interfaces to conform with https://github.com/opencontainers/image-spec/blob/master/media-types.md
+
 import docker_sign_verify.utils as Utils
 from .manifests import (
     ArchiveManifest,
