@@ -23,4 +23,4 @@ from .imagesources import (
 from .utils import FormattedSHA256
 
 
-__version__ = "0.4.1.dev0"
+__version__ = "0.4.2"
