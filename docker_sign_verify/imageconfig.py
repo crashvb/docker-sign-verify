@@ -60,7 +60,7 @@ class ImageConfig:
                 json.dumps(signature_data["signatures"]),
             )
         if signature_data["original_config"]:
-            result += "{0}:{1},".format(
+            result += "{0}:{1}".format(
                 json.dumps(ImageConfig.ORIGINAL_CONFIG_LABEL),
                 json.dumps(signature_data["original_config"]),
             )
