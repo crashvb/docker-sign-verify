@@ -2,6 +2,8 @@
 
 """ImageConfig tests."""
 
+import copy
+import os
 import pytest
 
 from docker_sign_verify import ImageConfig, Signer
@@ -243,3 +245,18 @@ def test_acceptance_sign_unsign_symmetry(
     assert image_config.get_config_digest() == config_digest
     # Note: We cannot compare the original signed digest, as we are removing *all* signatures, not just the one
     #       we are appending.
+
+
+def test_minimal():
+    """Test minimal image configuration."""
+
+    environ = copy.deepcopy(os.environ)
+    os.environ["DSV_ONE_WAY"] = "1"
+
+    # Note: At a minimum, [Cc]onfig key must exist with non-null value
+    image_config = ImageConfig(b'{"Config":{}}')
+    signer = FakeSigner()
+    assert image_config.sign(signer) == signer.signature_value
+    assert b"BEGIN FAKE SIGNATURE" in image_config.get_config()
+
+    os.environ = environ

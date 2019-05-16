@@ -10,6 +10,7 @@ https://github.com/moby/moby/blob/master/image/spec/v1.md
 import copy
 import json
 import logging
+import os
 import re
 
 from typing import Dict
@@ -85,16 +86,16 @@ class ImageConfig:
         except KeyError:
             config = config_json["config"]
 
-        if not config:
+        if config is None:
             raise RuntimeError(
                 "Unable to locate [Cc]onfig key within image configuration!"
             )
 
-        # TODO: Isolate which images are causing exceptions here, and add specific tests ...
         try:
             labels = config["Labels"]
         except KeyError:
-            LOGGER.warning("Non-conformant image configuration; 'Labels' missing!")
+            labels = None
+            LOGGER.debug("Non-conformant image configuration; 'Labels' missing!")
 
         if labels is None:
             labels = config["Labels"] = {}
@@ -119,7 +120,15 @@ class ImageConfig:
             # Note: Remove trailing comma for empty set
             token_replace = b'"Labels":{' + raw_signature_data[:-1] + b"}"
         if self.config.find(token_find) == -1:
-            raise RuntimeError("Unable to locate labels token!")
+            allow_one_way = os.environ.get("DSV_ONE_WAY", None)
+            if not allow_one_way:
+                raise RuntimeError("Unable to locate labels with emtpy set!")
+
+            LOGGER.warning("Transformation will be one-way; unsign will not be possible!")
+            token_find = b'onfig":{'
+            token_replace = token_find + b'"Labels":{' + raw_signature_data[:-1] + b"}"
+            if self.config.find(token_find) == -1:
+                raise RuntimeError("Unable to locate config token!")
         self._set_config(self.config.replace(token_find, token_replace, 1))
 
     def _remove_signature_data(self) -> bytes:
