@@ -100,7 +100,7 @@ class GPGSigner(Signer):
         LOGGER.debug("Using trust store: %s", homedir)
         self.gpg = gnupg.GPG(homedir=homedir)
 
-    def _debug_init_store(self, name="DSV Test Key", email="test.key@swift.com"):
+    def _debug_init_store(self, name="DSV Test Key", email="test@key.com"):
         """
         Initializes a new GPG keystore for testing purposes.
 

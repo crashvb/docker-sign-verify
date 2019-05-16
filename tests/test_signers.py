@@ -7,6 +7,8 @@ import pytest
 import tempfile
 import shutil
 
+from pathlib import Path
+
 from docker_sign_verify import GPGSigner, PKISigner
 
 
@@ -37,9 +39,6 @@ def pkisigner(request):
     return signer
 
 
-@pytest.mark.skip(
-    reason="gpg2 key generation is currently broken, and when it's not, takes too long."
-)
 def test_gpgsigner(caplog, gpgsigner: GPGSigner):
     """Test configuration signing and verification using GPG."""
 

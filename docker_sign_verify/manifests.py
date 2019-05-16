@@ -153,7 +153,7 @@ class ArchiveManifest(Manifest):
 
 class RegistryV2Manifest(Manifest):
     """
-    Image source manifest for docker registries, as defined in:
+    Manifest list, aka "fat manifest" as defined in:
 
     https://github.com/docker/distribution/blob/master/docs/spec/manifest-v2-2.md
     """

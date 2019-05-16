@@ -80,15 +80,25 @@ class ImageConfig:
         """
 
         # Note: We need to handle both key cases, as Red Hat does not conform to the standard.
-        key = "Config"
         try:
-            labels = config_json[key]["Labels"]
+            config = config_json["Config"]
         except KeyError:
-            key = "config"
-            labels = config_json[key]["Labels"]
+            config = config_json["config"]
+
+        if not config:
+            raise RuntimeError(
+                "Unable to locate [Cc]onfig key within image configuration!"
+            )
+
+        # TODO: Isolate which images are causing exceptions here, and add specific tests ...
+        try:
+            labels = config["Labels"]
+        except KeyError:
+            LOGGER.warning("Non-conformant image configuration; 'Labels' missing!")
 
         if labels is None:
-            config_json[key]["Labels"] = labels = {}
+            labels = config["Labels"] = {}
+
         return labels
 
     def _replace_signature_data(self):

@@ -620,6 +620,7 @@ class RegistryV2ImageSource(ImageSource):
                 bearer["realm"], bearer["service"], scope
             )
             response = requests.get(url, headers=headers)
+            #LOGGER.debug("Token Response: %s", response.content)
             must_be_equal(200, response.status_code, "Failed to retrieve bearer token")
 
             self.token = response.json()["token"]
