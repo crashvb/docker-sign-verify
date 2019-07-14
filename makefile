@@ -25,7 +25,7 @@ test:
 
 test_code:
 	# Note: https://github.com/PyCQA/pylint/issues/289
-	python -m pylint --disable C0330 --max-line-length=120 docker_sign_verify
+	python -m pylint --disable C0330,R0801 --max-line-length=120 docker_sign_verify tests
 
 test_package: build
 	python -m venv $(tmpdir)

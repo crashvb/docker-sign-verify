@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+# pylint: disable=redefined-outer-name
+
 """Manifest tests."""
 
 import json
@@ -17,46 +19,56 @@ from .testutils import get_test_data
 
 
 @pytest.fixture()
-def formattedsha256():
+def formattedsha256() -> FormattedSHA256:
+    """Provides a FormattedSHA256 instance with a distinct digest value."""
     return FormattedSHA256(
         "ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789"
     )
 
 
 @pytest.fixture()
-def sha256_archive_layer(formattedsha256: FormattedSHA256):
+def sha256_archive_layer(formattedsha256: FormattedSHA256) -> str:
+    """Provides the archive layer identifier for the distinct digest value."""
     return "{0}/layer.tar".format(formattedsha256.sha256)
 
 
 @pytest.fixture
-def manifest_archive(request):
+def manifest_archive(request) -> bytes:
+    """Provides a sample archive manifest."""
     return get_test_data(request, __name__, "manifest_archive.json")
 
 
 @pytest.fixture
-def manifest_registry(request):
+def manifest_registry(request) -> bytes:
+    """Provides a sample registry manifest."""
     return get_test_data(request, __name__, "manifest_registry.json")
 
 
 @pytest.fixture
-def manifest_repository(request):
+def manifest_repository(request) -> bytes:
+    """Provides a sample repository manifest."""
     return get_test_data(request, __name__, "manifest_repository.json")
 
 
 @pytest.fixture
-def archive_manifest(manifest_archive):
+def archive_manifest(manifest_archive: bytes) -> ArchiveManifest:
+    """Provides an ArchiveManifest instance for the sample archive manifest."""
     # Do not use caching; get a new instance for each test
     return ArchiveManifest(manifest_archive)
 
 
 @pytest.fixture
-def devicemapper_repository_manifest(manifest_repository):
+def devicemapper_repository_manifest(
+    manifest_repository: bytes
+) -> DeviceMapperRepositoryManifest:
+    """Provides a DeviceMapperRepositoryManifest instance for the sample repository manifest."""
     # Do not use caching; get a new instance for each test
     return DeviceMapperRepositoryManifest(manifest_repository)
 
 
 @pytest.fixture
-def registry_v2_manifest(manifest_registry):
+def registry_v2_manifest(manifest_registry: bytes) -> RegistryV2Manifest:
+    """Provides a RegistryV2Manifest instance for the sample registry manifest."""
     # Do not use caching; get a new instance for each test
     return RegistryV2Manifest(manifest_registry)
 
@@ -184,6 +196,7 @@ def test_registry_override_config(
 
 
 def test_registry_get_config_digest(registry_v2_manifest: RegistryV2Manifest):
+    """Test image configuration digest retrieval."""
     formattedsha256 = FormattedSHA256(
         "8f1196ff19e7b5c5861de192ae77e8d7a692fcbca2dd3174d324980f72ab49bf"
     )
@@ -235,6 +248,7 @@ def test_repository_get_config_digest(
     img_name: str,
     config_digest: str,
 ):
+    """Test image configuration digest retrieval."""
     image_name = ImageName.parse(img_name)
     assert (
         devicemapper_repository_manifest.get_config_digest(image_name) == config_digest

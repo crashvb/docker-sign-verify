@@ -2,6 +2,8 @@
 
 """Docker verify command line interface."""
 
+import logging
+
 from typing import List
 
 import click
@@ -16,6 +18,7 @@ from docker_sign_verify import (
 from .common import logging_options, set_log_levels, version
 from .utils import to_image_name
 
+LOGGER = logging.getLogger(__name__)
 
 # Bug Fix: There isn't anything we can do about mis-configured remote certificates ...
 urllib3.disable_warnings(urllib3.exceptions.SecurityWarning)
@@ -33,9 +36,21 @@ def verify(context):
     """Verifies an image(s)."""
     for image_name in context.obj["images"]:
         if context.obj["check_signatures"]:
-            context.obj["imagesource"].verify_image_signatures(image_name)
+            result = context.obj["imagesource"].verify_image_signatures(image_name)
+            LOGGER.info(
+                "Image %s (%s) is consistent.",
+                image_name,
+                result["image_config"].get_config_digest(),
+            )
+            LOGGER.info("Image %s signature(s) verified.", len(result["signatures"]))
         else:
-            context.obj["imagesource"].verify_image_integrity(image_name)
+            result = context.obj["imagesource"].verify_image_integrity(image_name)
+            LOGGER.info(
+                "Image %s (%s) is consistent.",
+                image_name,
+                result["image_config"].get_config_digest(),
+            )
+            LOGGER.info("Image signature(s) not verified.")
 
 
 @click.group()

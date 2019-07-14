@@ -92,26 +92,6 @@ class ImageSource(abc.ABC):
             "verify_image_data": data,
         }
 
-    def _unsign_image_config(self, image_name: ImageName) -> Dict:
-        """
-        Verifies an image, then removes all signature values without storing it in the image source.
-
-        Args:
-            image_name: The image name.
-
-        Returns:
-                image_config: The ImageConfig object corresponding to the unsigned image.
-                verify_image_data: as defined by :func:~docker_sign_verify.ImageSource.verify_image_integrity.
-        """
-        # Verify image integrity (we use the verified values from this point on)
-        data = self.verify_image_integrity(image_name)
-        image_config = data["image_config"]  # type: ImageConfig
-
-        # Remove all existing signatures ....
-        image_config.unsign()
-
-        return {"image_config": image_config, "verify_image_data": data}
-
     def _verify_image_config(self, image_name: ImageName) -> Dict:
         """
         Verifies the integration of an image configuration against metadata contained within a manifest.
@@ -140,10 +120,14 @@ class ImageSource(abc.ABC):
 
         # Retrieve the image layers from the image configuration ...
         image_config = self.get_image_config(image_name)
+        config_digest_canonical = image_config.get_config_digest_canonical()
+        LOGGER.debug(
+            "    config digest (canonical): %s", xellipsis(config_digest_canonical)
+        )
         must_be_equal(
             config_digest,
             image_config.get_config_digest(),
-            "Image config digest mismatch (1)",
+            "Image config digest mismatch",
         )
         image_layers = image_config.get_image_layers()
         LOGGER.debug(
@@ -272,23 +256,7 @@ class ImageSource(abc.ABC):
         """
 
     @abc.abstractmethod
-    def unsign_image(
-        self, src_image_name: ImageName, dest_image_source, dest_image_name: ImageName
-    ):
-        """
-            Retrieves and unsigns an image, storing it in the destination image source.
-
-        Args:
-            src_image_name: The source image name.
-            dest_image_source: The destination image source into which to store the unsigned image.
-            dest_image_name: The description image name.
-
-        Returns:
-            dict: as defined by :func:~docker_sign_verify.ImageSource.TODO.
-        """
-
-    @abc.abstractmethod
-    def verify_image_integrity(self, image_name: ImageName):
+    def verify_image_integrity(self, image_name: ImageName) -> Dict:
         """
         Verifies that the image source data format is consistent with respect to the image configuration and image
         layers, and that the image configuration and image layers are internally consistent (the digest values match).
@@ -303,13 +271,18 @@ class ImageSource(abc.ABC):
                 uncompressed_layer_files: The list of uncompressed layer files on disk.
         """
 
-    def verify_image_signatures(self, image_name: ImageName):
+    def verify_image_signatures(self, image_name: ImageName) -> Dict:
         """
         Verifies that signatures contained within the image source data format are valid (that the image has not been
         modified since they were created)
 
         Args:
             image_name: The image name.
+
+        Returns:
+            dict:
+                image config: The image configuration.
+                signatures: as defined by :func:~docker_sign_verify.ImageConfig.verify_signatures.
         """
 
         # Verify image integrity (we use the verified values from this point on)
@@ -322,11 +295,6 @@ class ImageSource(abc.ABC):
             xellipsis(image_config.get_config_digest()),
         )
         data = image_config.verify_signatures()
-        signature_data = data["signature_data"]
-        LOGGER.debug(
-            "    config digest (unsigned): %s",
-            xellipsis(signature_data["original_config"]),
-        )
 
         # List the image signatures ...
         LOGGER.debug("    signatures:")
@@ -360,6 +328,8 @@ class ImageSource(abc.ABC):
                 LOGGER.error("Unknown Signature Type: %s", type(result))
 
         LOGGER.debug("Signature check passed.")
+
+        return {"image_config": image_config, "signatures": data["results"]}
 
 
 class ArchiveImageSource(ImageSource):
@@ -531,12 +501,7 @@ class ArchiveImageSource(ImageSource):
 
         return data
 
-    def unsign_image(
-        self, src_image_name: ImageName, dest_image_source, dest_image_name: ImageName
-    ):
-        raise NotImplementedError
-
-    def verify_image_integrity(self, image_name: ImageName):
+    def verify_image_integrity(self, image_name: ImageName) -> Dict:
         data = self._verify_image_config(image_name)
 
         # Reconcile manifest layers and image layers (in order)...
@@ -620,7 +585,7 @@ class RegistryV2ImageSource(ImageSource):
                 bearer["realm"], bearer["service"], scope
             )
             response = requests.get(url, headers=headers)
-            #LOGGER.debug("Token Response: %s", response.content)
+            # LOGGER.debug("Token Response: %s", response.content)
             must_be_equal(200, response.status_code, "Failed to retrieve bearer token")
 
             self.token = response.json()["token"]
@@ -651,9 +616,7 @@ class RegistryV2ImageSource(ImageSource):
                     self.credentials = json.loads(file.read()).get("auths", {})
 
         for endpoint_auth in [
-            u
-            for u in self.credentials
-            if u == endpoint or urlparse(u).netloc == endpoint
+            u for u in self.credentials if endpoint in (u, urlparse(u).netloc)
         ]:
             result = self.credentials[endpoint_auth].get("auth", None)
             if result:
@@ -674,6 +637,12 @@ class RegistryV2ImageSource(ImageSource):
         """
         if not headers:
             headers = {}
+
+        if "User-Agent" not in headers:
+            # Note: This cannot be imported above, as it causes a circular import!
+            from . import __version__
+
+            headers["User-Agent"] = "docker-sign-verify/{0}".format(__version__)
 
         endpoint = image_name.resolve_endpoint()
         credentials = self._get_credentials(endpoint)
@@ -718,7 +687,6 @@ class RegistryV2ImageSource(ImageSource):
         must_be_equal(202, response.status_code, "Failed to upload blob")
 
         # TODO: Do we need to emulate the Docker-Content-Digest return type?
-        LOGGER.fatal("HEADERS: %s", response.headers)
         return response
 
     def initiate_resumable_blob_upload(self, image_name: ImageName) -> Response:
@@ -754,7 +722,7 @@ class RegistryV2ImageSource(ImageSource):
             chunk: The chunk of data to be uploaded.
 
         Returns:
-            TODO
+            The underlying response.
         """
         headers = self._get_request_headers(
             ImageName.parse(urlparse(location).netloc + "/"),
@@ -834,16 +802,16 @@ class RegistryV2ImageSource(ImageSource):
         )
         response = requests.get(url, headers=headers, stream=True)
 
-        size = 0
         hasher = hashlib.sha256()
         for chunk in response.iter_content(chunk_size=RegistryV2ImageSource.CHUNK_SIZE):
             if not chunk:
                 break
             file.write(chunk)
-            size += len(chunk)
             hasher.update(chunk)
         file.flush()
         os.fsync(file.fileno())
+
+        size = file.tell()
 
         # Be kind, rewind ...
         file.seek(0)
@@ -876,33 +844,37 @@ class RegistryV2ImageSource(ImageSource):
             LOGGER.debug("Dry Run: skipping put_image_layer")
             return
 
-        digest = formatted_digest(content)
-
         # TODO: Why doesn't this work?
-        # return self.monolithic_blob_upload(image_name, content, digest)
+        # self.monolithic_blob_upload(image_name, content)
 
+        digest = formatted_digest(content)
         location = self.initiate_resumable_blob_upload(image_name).headers["location"]
         return self.complete_resumable_blob_upload(location, digest, content)
+
+        # TODO: Should we check self.layer_exists(image_name, digest) here, like docker CLI does?
 
     def put_image_layer_from_disk(self, image_name: ImageName, file):
         if self.dry_run:
             LOGGER.debug("Dry Run: skipping put_image_layer_from_disk")
             return
         location = self.initiate_resumable_blob_upload(image_name).headers["location"]
-        offset = 0
+
+        file.seek(0)
         hasher = hashlib.sha256()
         while True:
+            offset = file.tell()
             chunk = file.read(RegistryV2ImageSource.CHUNK_SIZE)
             if not chunk:
                 break
             location = self.resume_blob_upload(location, offset, chunk).headers[
                 "location"
             ]
-            offset += len(chunk)
             hasher.update(chunk)
         digest = FormattedSHA256(hasher.hexdigest())
 
         return self.complete_resumable_blob_upload(location, digest)
+
+        # TODO: Should we check self.layer_exists(image_name, digest) here, like docker CLI does?
 
     def put_manifest(self, manifest: Manifest, image_name: ImageName = None):
         if self.dry_run:
@@ -948,15 +920,12 @@ class RegistryV2ImageSource(ImageSource):
 
         # Replicate all of the image layers ...
         registry_layers = manifest.get_layers()
-        registry_layers_changed = registry_layers.copy()
         for i, registry_layer in enumerate(registry_layers):
             if not dest_image_source.layer_exists(dest_image_name, registry_layer):
-                digest = dest_image_source.put_image_layer_from_disk(
+                dest_image_source.put_image_layer_from_disk(
                     dest_image_name,
                     data["verify_image_data"]["compressed_layer_files"][i],
                 )
-                registry_layers_changed[i] = digest
-        registry_layers = registry_layers_changed
 
         # Push the new image configuration ...
         config_digest_signed = image_config.get_config_digest()
@@ -971,7 +940,6 @@ class RegistryV2ImageSource(ImageSource):
             manifest_signed.set_config_digest(
                 config_digest_signed, len(image_config.get_config())
             )
-            manifest_signed.set_layers(registry_layers)
             data["manifest_signed"] = manifest_signed
             dest_image_source.put_manifest(manifest_signed, dest_image_name)
         elif isinstance(dest_image_source, DeviceMapperRepositoryImageSource):
@@ -985,52 +953,7 @@ class RegistryV2ImageSource(ImageSource):
 
         return data
 
-    def unsign_image(
-        self, src_image_name: ImageName, dest_image_source, dest_image_name: ImageName
-    ):
-        LOGGER.debug("Unsigning: %s ...", src_image_name)
-
-        # Generate an unsigned image configuration ...
-        data = self._unsign_image_config(src_image_name)
-        manifest = data["verify_image_data"]["manifest"]
-        image_config = data["image_config"]
-
-        # Replicate all of the image layers ...
-        registry_layers = manifest.get_layers()
-        for i, registry_layer in enumerate(registry_layers):
-            if not dest_image_source.layer_exists(dest_image_name, registry_layer):
-                dest_image_source.put_image_layer_from_disk(
-                    dest_image_name,
-                    data["verify_image_data"]["compressed_layer_files"][i],
-                )
-
-        # Push the new image configuration ...
-        config_digest_unsigned = image_config.get_config_digest()
-        LOGGER.debug("    config digest (unsigned): %s", config_digest_unsigned)
-        dest_image_source.put_image_config(dest_image_name, image_config)
-
-        # Generate a new registry manifest, and push ...
-        if isinstance(dest_image_source, ArchiveImageSource):
-            raise NotImplementedError
-        elif isinstance(dest_image_source, RegistryV2ImageSource):
-            manifest_unsigned = copy.deepcopy(manifest)  # type: RegistryV2Manifest
-            manifest_unsigned.set_config_digest(
-                config_digest_unsigned, len(image_config.get_config())
-            )
-            data["manifest_unsigned"] = manifest_unsigned
-            dest_image_source.put_manifest(manifest_unsigned, dest_image_name)
-        elif isinstance(dest_image_source, DeviceMapperRepositoryImageSource):
-            raise NotImplementedError
-        else:
-            raise RuntimeError(
-                "Unknown derived class: {0}".format(type(dest_image_source))
-            )
-
-        LOGGER.debug("Created new image: %s", dest_image_name)
-
-        return data
-
-    def verify_image_integrity(self, image_name: ImageName):
+    def verify_image_integrity(self, image_name: ImageName) -> Dict:
         data = self._verify_image_config(image_name)
 
         # Reconcile manifest layers and image layers (in order)...
@@ -1046,6 +969,11 @@ class RegistryV2ImageSource(ImageSource):
                 layer,
                 data_compressed["digest"],
                 "Registry layer[{0}] digest mismatch".format(i),
+            )
+            must_be_equal(
+                os.path.getsize(compressed_layer_files[i].name),
+                data_compressed["size"],
+                "Registry layer[{0}] size mismatch".format(i),
             )
 
             # Decompress (convert) the registry image layer into the image layer
@@ -1272,12 +1200,7 @@ class DeviceMapperRepositoryImageSource(ImageSource):
 
         return data
 
-    def unsign_image(
-        self, src_image_name: ImageName, dest_image_source, dest_image_name: ImageName
-    ):
-        raise NotImplementedError
-
-    def verify_image_integrity(self, image_name: ImageName):
+    def verify_image_integrity(self, image_name: ImageName) -> Dict:
         data = self._verify_image_config(image_name)
 
         # Note: We do not need to reconcile manifest layer ids here, as "we" derived them in
