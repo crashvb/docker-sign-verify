@@ -76,11 +76,16 @@ def sign(context):
     )
     signer = signer_class(context.obj["keyid"], context.obj["keypass"])
 
-    context.obj["imagesource"].sign_image(
+    data = context.obj["imagesource"].sign_image(
         signer,
         context.obj["src_image_name"],
         context.obj["imagesource"],
         context.obj["dest_image_name"],
+    )
+    LOGGER.info(
+        "Created new image: %s (%s)",
+        context.obj["dest_image_name"],
+        data["image_config"].get_config_digest(),
     )
 
 
@@ -108,7 +113,7 @@ def cli(context, dry_run: False, verbosity: int = 2):
 )
 @sign_options
 @click.pass_context
-# pylint: disable=redefined-outer-name
+# pylint: disable=redefined-outer-name,too-many-arguments
 def archive(
     context,
     keyid: str,
@@ -134,6 +139,7 @@ def archive(
 @cli.command()
 @sign_options
 @click.pass_context
+# pylint: disable=too-many-arguments
 def registry(
     context,
     keyid: str,
@@ -156,6 +162,7 @@ def registry(
 @cli.command()
 @sign_options
 @click.pass_context
+# pylint: disable=too-many-arguments
 def repository(
     context,
     keyid: str,

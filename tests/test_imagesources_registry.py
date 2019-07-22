@@ -1,12 +1,14 @@
 #!/usr/bin/env python
 
+# pylint: disable=redefined-outer-name
+
 """RegistryV2ImageSource tests."""
 
 import base64
 import copy
-import pytest
 import tempfile
 
+import pytest
 
 from docker_sign_verify import (
     ImageConfig,
@@ -23,7 +25,8 @@ KNOWN_GOOD_IMAGE_LIST = ["busybox:1.30.1", "library/python:3.7.2-slim-stretch"]
 
 
 @pytest.fixture
-def registry_v2_image_source():
+def registry_v2_image_source() -> RegistryV2ImageSource:
+    """Provides a RegistryV2ImageSource instance."""
     # Do not use caching; get a new instance for each test
     return RegistryV2ImageSource(dry_run=True)
 
@@ -51,6 +54,7 @@ def test__get_credentials(
     registry_v2_image_source.credentials_store = get_test_data_path(
         request, "credentials_store.json"
     )
+    # pylint: disable=protected-access
     credentials = registry_v2_image_source._get_credentials(endpoint)
     assert credentials
 
@@ -80,6 +84,7 @@ def test__get_request_headers(
         request, "credentials_store.json"
     )
     image_name = ImageName.parse(image)
+    # pylint: disable=protected-access
     headers = registry_v2_image_source._get_request_headers(image_name)
     assert headers
     assert expected_credentials in headers["Authorization"]
@@ -92,7 +97,7 @@ def test_get_iamge_config(registry_v2_image_source: RegistryV2ImageSource, image
     config = registry_v2_image_source.get_image_config(image_name)
 
     assert config
-    assert type(config) == ImageConfig
+    assert isinstance(config, ImageConfig)
 
 
 @pytest.mark.parametrize("image", KNOWN_GOOD_IMAGE_LIST)
@@ -118,7 +123,7 @@ def test_get_manifest(registry_v2_image_source: RegistryV2ImageSource, image: st
     manifest = registry_v2_image_source.get_manifest(image_name)
 
     assert manifest
-    assert type(manifest) == RegistryV2Manifest
+    assert isinstance(manifest, RegistryV2Manifest)
 
 
 @pytest.mark.parametrize("image", KNOWN_GOOD_IMAGE_LIST)
@@ -176,59 +181,6 @@ def test_sign_image_same_image_source(
 
 
 # TODO: test_sign_image_different_image_source
-
-
-@pytest.mark.parametrize("image", KNOWN_GOOD_IMAGE_LIST)
-def test_unsign_image_same_image_source(
-    registry_v2_image_source: RegistryV2ImageSource, image: str
-):
-    """Test image unsigning."""
-    src_image_name = ImageName.parse(image)
-    dest_image_name = copy.deepcopy(src_image_name)
-    dest_image_name.tag = "{0}_unsigned".format(dest_image_name.tag)
-
-    def assertions(result: dict):
-        assert result
-
-        image_config = result["image_config"]
-        assert image_config
-        assert "FAKE SIGNATURE" not in str(image_config)
-
-        verify_image_data = result["verify_image_data"]
-        assert verify_image_data
-        assert image_config == verify_image_data["image_config"]
-
-        manifest = verify_image_data["manifest"]
-        assert manifest
-
-        manifest_unsigned = result["manifest_unsigned"]
-        assert manifest_unsigned
-        assert manifest_unsigned.get_config_digest() == image_config.get_config_digest()
-        assert len(manifest_unsigned.get_layers()) == len(
-            image_config.get_image_layers()
-        )
-
-    # 1. Pre signature
-    assertions(
-        registry_v2_image_source.unsign_image(
-            src_image_name, registry_v2_image_source, dest_image_name
-        )
-    )
-
-    # Sign
-    registry_v2_image_source.sign_image(
-        FakeSigner(), src_image_name, registry_v2_image_source, dest_image_name
-    )
-
-    # 2. Post signature
-    assertions(
-        registry_v2_image_source.unsign_image(
-            src_image_name, registry_v2_image_source, dest_image_name
-        )
-    )
-
-
-# TODO: test_unsign_image_different_image_source
 
 
 @pytest.mark.parametrize("image", KNOWN_GOOD_IMAGE_LIST)

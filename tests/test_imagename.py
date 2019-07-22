@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+# pylint: disable=redefined-outer-name
+
 """ImageName tests."""
 
 import pytest
@@ -9,11 +11,13 @@ from docker_sign_verify import ImageName
 
 @pytest.fixture()
 def url():
+    """Provides a fake URL with endpoint, port, namespace, image, and tag segments."""
     return "endpoint:port/namespace/image:tag"
 
 
 @pytest.fixture()
-def image_name(url):
+def image_name(url: str) -> ImageName:
+    """Provides ImageName instance for the fake URL."""
     return ImageName.parse(url)
 
 
@@ -51,6 +55,7 @@ def test_parse_string():
                     string = "{0}/{1}".format(endpoint, string)
 
                 # Verify the complex string was parsed correctly ...
+                # pylint: disable=protected-access
                 result = ImageName._parse_string(string)
                 assert result["endpoint"] == endpoint
                 assert result["image"] == image

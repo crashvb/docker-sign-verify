@@ -10,10 +10,8 @@ https://github.com/moby/moby/blob/master/image/spec/v1.md
 import copy
 import json
 import logging
-import os
-import re
 
-from typing import Dict
+from typing import Dict, List
 
 import canonicaljson
 
@@ -28,45 +26,22 @@ class ImageConfig:
     Docker image configuration.
     """
 
-    # Label containing the original config digest
-    ORIGINAL_CONFIG_LABEL = "original_config"
-
-    # Label containing PEM encoded signature(s) (newline concatenated)
+    # Label containing a string value (escaped json)
     SIGNATURES_LABEL = "signatures"
+
+    # The normalized empty signature value
+    DEFAULT_SIGNATURES_VALUE = "[]"
 
     def __init__(self, config: bytes):
         """
         Args:
             config: The raw image configuration.
         """
+        self.config = self.config_json = None
         self._set_config(config)
 
     def __str__(self):
-        # TODO: Remove me if tests work: return str(self.get_config())
         return self.get_config().decode("utf-8")
-
-    def _construct_json_fragment(self) -> bytes:
-        """
-        Constructs the serialized signature data as a JSON fragment.
-
-        Returns:
-            The byte representation of the json fragment.
-        """
-        result = ""
-        signature_data = self.get_signature_data()
-
-        if signature_data["signatures"]:
-            result += "{0}:{1},".format(
-                json.dumps(ImageConfig.SIGNATURES_LABEL),
-                json.dumps(signature_data["signatures"]),
-            )
-        if signature_data["original_config"]:
-            result += "{0}:{1},".format(
-                json.dumps(ImageConfig.ORIGINAL_CONFIG_LABEL),
-                json.dumps(signature_data["original_config"]),
-            )
-
-        return result.encode("utf-8")
 
     @staticmethod
     def _get_labels(config_json) -> Dict:
@@ -102,70 +77,45 @@ class ImageConfig:
 
         return labels
 
-    def _replace_signature_data(self):
+    @staticmethod
+    def _normalize(config_json):
         """
-        Replaces the serialized signature data within an image configuration, preserving the original formatting.
+        Normalizes a given image configuration so that it contains, at a minimum, the signatures label.
 
-        Note: This method does NOT detect and replace existing signature data; duplicates are possible!
-        """
-        raw_signature_data = self._construct_json_fragment()
-
-        token_find = b'"Labels":{'
-        token_replace = token_find + raw_signature_data
-        if self.config.find(token_find) == -1:
-            LOGGER.debug(
-                "Unable to locate labels token with existing values; retrying with empty set ..."
-            )
-            token_find = b'"Labels":null'
-            # Note: Remove trailing comma for empty set
-            token_replace = b'"Labels":{' + raw_signature_data[:-1] + b"}"
-        if self.config.find(token_find) == -1:
-            allow_one_way = os.environ.get("DSV_ONE_WAY", None)
-            if not allow_one_way:
-                raise RuntimeError("Unable to locate labels with emtpy set!")
-
-            LOGGER.warning("Transformation will be one-way; unsign will not be possible!")
-            token_find = b'onfig":{'
-            token_replace = token_find + b'"Labels":{' + raw_signature_data[:-1] + b"}"
-            if self.config.find(token_find) == -1:
-                raise RuntimeError("Unable to locate config token!")
-        self._set_config(self.config.replace(token_find, token_replace, 1))
-
-    def _remove_signature_data(self) -> bytes:
-        """
-        Removes the serialized signature data from within image configuration, preserving the original formatting.
+        Args:
+            config_json: The image configuration to be normalized.
 
         Returns:
-            bytes: as defined by :func:~docker_sign_verify.ImageConfig._construct_json_fragment.
+            The normalized image configuration.
         """
-        raw_signature_data = self._construct_json_fragment()
+        labels = ImageConfig._get_labels(config_json)
+        signatures = labels.get(
+            ImageConfig.SIGNATURES_LABEL, ImageConfig.DEFAULT_SIGNATURES_VALUE
+        )
+        labels[ImageConfig.SIGNATURES_LABEL] = signatures
 
-        # Remove with trailing comma ...
-        token_find = raw_signature_data
-        token_replace = b""
-        config = self.config.replace(token_find, token_replace, 1)
-
-        # ... then without ...
-        token_find = raw_signature_data[:-1]
-        config = config.replace(token_find, token_replace, 1)
-
-        # Remove empty labels ...
-        token_find = b'"Labels":{}'
-        token_replace = b'"Labels":null'
-        config = config.replace(token_find, token_replace, 1)
-
-        self._set_config(config)
-        return raw_signature_data
+        return config_json
 
     def _set_config(self, config: bytes):
         """
-        Assigns the raw image configuration and updates the internal json object.
+        Assigns the raw image configuration and updates the internal JSON object.
 
         Args:
             config: The raw image configuration.
         """
         self.config = config
+        # Note: Do not normalize here, or integrity verification of unsigned images will fail.
         self.config_json = json.loads(self.config)
+
+    def _set_config_json(self, config_json):
+        """
+        Assigns the internal JSON object and updates the raw image configuration.
+
+        Args:
+            config_json: The internal JSON object.
+        """
+        self.config_json = config_json
+        self.config = json.dumps(self.config_json).encode("utf-8")
 
     def get_config(self) -> bytes:
         """
@@ -184,9 +134,7 @@ class ImageConfig:
             The image configuration in canonical JSON form.
         """
         config_json = copy.deepcopy(self.config_json)
-        for label in [ImageConfig.SIGNATURES_LABEL, ImageConfig.ORIGINAL_CONFIG_LABEL]:
-            ImageConfig._get_labels(config_json).pop(label, None)
-
+        config_json = ImageConfig._normalize(config_json)
         return canonicaljson.encode_canonical_json(config_json)
 
     def get_config_digest(self) -> FormattedSHA256:
@@ -196,7 +144,7 @@ class ImageConfig:
         Returns:
             The SHA256 digest value of the raw image configuration.
         """
-        return formatted_digest(self.config)
+        return formatted_digest(self.get_config())
 
     def get_config_digest_canonical(self) -> FormattedSHA256:
         """
@@ -207,7 +155,7 @@ class ImageConfig:
         """
         return formatted_digest(self.get_config_canonical())
 
-    def get_image_layers(self) -> list:
+    def get_image_layers(self) -> List:
         """
         Retrieves the listing of image layer identifiers.
 
@@ -217,128 +165,115 @@ class ImageConfig:
         diff_ids = self.config_json["rootfs"]["diff_ids"]
         return [FormattedSHA256.parse(x) for x in diff_ids]
 
-    def get_signature_data(self):
+    def clear_signature_list(self):
+        """Helper method to remove all signatures from the image configuration."""
+        self.set_signature_list([])
+
+    def get_signature_list(self) -> List:
         """
-        Retrieves the signature data from the image configuration.
+        Retrieves the signature list from the image configuration.
+
+        Example format:
+        [
+          { "digest":"sha256:0123456789",
+            "signature":"<sigvalue1>"
+          },
+          { "digest":"sha256:9876543210",
+            "signature":"<sigvalue2>"
+          },
+          ...
+        ]
 
         Returns:
-            dict:
-                original_config: SHA256 digest value corresponding to the unsigned raw image configuration, or None.
-                signatures: String of new line separated PEM encoded signature values.
-                signatures_list: List of PEM encoded signature values.
+            The deserialized / unescaped signature list in JSON form.
         """
         labels = ImageConfig._get_labels(self.config_json)
-        original_config = labels.get(ImageConfig.ORIGINAL_CONFIG_LABEL, None)
-        signatures = labels.get(ImageConfig.SIGNATURES_LABEL, "")
+        return json.loads(
+            labels.get(
+                ImageConfig.SIGNATURES_LABEL, ImageConfig.DEFAULT_SIGNATURES_VALUE
+            )
+        )
 
-        pem_marker = r"-{5}[^-]+-{5}"
-        signature_list = re.findall(r"({0}[^-]+{0})".format(pem_marker), signatures)
-
-        return {
-            "original_config": original_config,
-            "signatures": signatures,
-            "signature_list": signature_list,
-        }
-
-    def set_signature_data(self, original_config: str = None, signatures: str = None):
+    def set_signature_list(self, signatures: List):
         """
-        Assigns the signature data to the image configuration.
+        Serializes / escapes and assigns signature list to the image configuration. The method modifies the raw image
+        configuration.
 
         Args:
-            original_config: SHA256 digest value corresponding to the unsigned raw image configuration.
-            signatures: String of new line separated PEM encoded signature values.
+            signatures: The deserialized / unescaped signature list in JSON form.
         """
-        self._remove_signature_data()
-
         labels = ImageConfig._get_labels(self.config_json)
-        if original_config is not None:
-            labels[ImageConfig.ORIGINAL_CONFIG_LABEL] = original_config
-        else:
-            labels.pop(ImageConfig.ORIGINAL_CONFIG_LABEL, None)
+        labels[ImageConfig.SIGNATURES_LABEL] = json.dumps(signatures)
+        self._set_config_json(self.config_json)
 
-        if signatures is not None:
-            labels[ImageConfig.SIGNATURES_LABEL] = signatures
-        else:
-            labels.pop(ImageConfig.SIGNATURES_LABEL, None)
-
-        self._replace_signature_data()
-
-    def sign(self, signer: Signer) -> str:
+    def sign(self, signer: Signer, endorse: bool = False) -> str:
         """
-        Signs the SHA256 digest value of image configuration in canonical JSON form, and appends it to the signature
-        list.
+        Signs or endorses the SHA256 digest value of image configuration, in canonical JSON form, and appends it to the
+        signature list.
+
+        (Co-)signatures remove all existing signatures before calculating the canonical digest; endorsements do not.
+        Co-endorsements are not supported; however, nested endorsements are supported.
+
+        Effectively, this allows for interlacing (co-)signatures and endorsements, where all (co-)signatures apply to a
+        single, signature-less, image configuration regardless of where they appear in the signature list. And all
+        endorsements apply to the image configuration with signatures order 0 through n-1 (where n is the order of
+        endorsement being verified); regardless of what signatures or endorsements were added afterwards.
 
         Args:
             signer: The signer used to create the signature value.
+            endorse: Toggles between signing (default), and endorsing.
 
         Returns:
-            The PEM encoded signature value.
+            The signature value as defined by :func:~docker_sign_verify.Signers.sign.
         """
-
-        # TODO: Consider moving the validation logic below to a low-level check_signatures() method
-
-        signature_data = self.get_signature_data()
-        original_config = signature_data.get("original_config", None)
-        if signature_data["signatures"]:
-            signature_data["signatures"] += "\n"
-
-            # It is not reasonably possible to reproduce the hash of the
-            # original image configuration at this point.
-            if not original_config:
-                raise RuntimeError(
-                    "Refusing to sign; signature(s) exist without original config hash!"
-                )
-        else:
-            if original_config:
-                LOGGER.warning(
-                    "Original config hash found without signatures;overriding!"
-                )
-            original_config = self.get_config_digest()
-
-        digest = self.get_config_digest_canonical().encode("utf-8")
-        # if original_config and digest != original_config:
-        #    raise RuntimeError("Refusing to sign; embedded and calculated original config values are inconsistent!")
-
-        signature = signer.sign(digest)
+        signatures = self.get_signature_list()
+        if not endorse:
+            self.clear_signature_list()
+        digest = self.get_config_digest_canonical()
+        signature = signer.sign(digest.encode("utf-8"))
         if not signature:
             raise RuntimeError("Failed to create signature!")
-        signature_data["signatures"] += signature
-        self.set_signature_data(original_config, signature_data["signatures"])
+
+        signatures.append({"digest": digest, "signature": signature})
+        self.set_signature_list(signatures)
 
         return signature
 
-    def verify_signatures(self):
+    def verify_signatures(self) -> Dict:
         """
         Verifies the PEM encoded signature values in the image configuration.
 
         Returns:
             dict:
-                signature_data: Dictionary as defined by :func:~docker_sign_verify.ImageConfig.get_signature_data.
+                signature_data: List as defined by :func:~docker_sign_verify.ImageConfig.get_signature_list.
                 results: Signer-specific result value.
         """
-        signature_data = self.get_signature_data()
-        if not signature_data["signature_list"]:
+        signatures = self.get_signature_list()
+        if not signatures:
             raise RuntimeError("Image does not contain any signatures!")
 
-        # Remove the signatures and verify the original image configuration ...
-        config_original = copy.deepcopy(self)
-        config_original._remove_signature_data()
-        must_be_equal(
-            signature_data["original_config"],
-            config_original.get_config_digest(),
-            "Image config digest mismatch (2)",
-        )
+        # Assumptions:
+        # * The signature list is ordered.
+        # * The first entry in the list *must* be a (co-)signature, as there is nothing older to endorse.
+        # * Normalization during canonicalization ensures a consistent empty set.
 
-        # Verify the image signatures ...
-        digest = config_original.get_config_digest_canonical().encode("utf-8")
         results = []
-        for signature in signature_data["signature_list"]:
-            signer = Signer.for_signature(signature)
-            result = signer.verify(digest, signature)
+        for i, signature in enumerate(signatures):
+            _temp = copy.deepcopy(self)
+            # (Co-)signature
+            if signature["digest"] == signatures[0]["digest"]:
+                _temp.clear_signature_list()
+            # Endorsement
+            else:
+                _temp.set_signature_list(signatures[:i])
+
+            digest = _temp.get_config_digest_canonical()
+            must_be_equal(
+                signature["digest"], digest, "Image config canonical digest mismatch"
+            )
+
+            signer = Signer.for_signature(signature["signature"])
+            result = signer.verify(digest.encode("utf-8"), signature["signature"])
             results.append(result)
 
-        return {"signature_data": signature_data, "results": results}
-
-    def unsign(self):
-        """Removes all signatures fro the image configuration."""
-        self._remove_signature_data()
+        return {"signatures": signatures, "results": results}

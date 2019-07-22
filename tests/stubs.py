@@ -19,8 +19,7 @@ def _signer_for_signature(signature: str):
     """Override of docker_sign_verify.Signer::_for_signature()."""
     if "FAKE SIGNATURE" in signature:
         return FakeSigner()
-    else:
-        raise RuntimeError("Unsupported signature type!")
+    raise RuntimeError("Unsupported signature type!")
 
 
 class FakeSigner(Signer):
@@ -110,11 +109,6 @@ class FakeRegistryV2ImageSourceNoLabels(ImageSource):
         src_image_name: ImageName,
         dest_image_source,
         dest_image_name: ImageName,
-    ):
-        raise RuntimeError("Logic error; method should not be invoked!")
-
-    def unsign_image(
-        self, src_image_name: ImageName, dest_image_source, dest_image_name: ImageName
     ):
         raise RuntimeError("Logic error; method should not be invoked!")
 
