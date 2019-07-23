@@ -21,7 +21,9 @@ steps:
     versionSpec: '$(python.version)'
   displayName: 'Use Python $(python.version)'
 
-- script: make .venv
+- script: |
+  find / -type f -name "*libpython3.7m.so*"
+  make .venv
   displayName: 'Make virtual environment'
 
 - script: .venv/bin/python -m pytest --log-cli-level info
