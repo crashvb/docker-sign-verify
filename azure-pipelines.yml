@@ -23,7 +23,8 @@ steps:
 
 - script: |
     export LD_LIBRARY_PATH="\$(dirname \$(dirname \$(which python3)))/lib"
-    find / -type f -name "*libpython3.7m.so*" 2>/dev/null
+    #find / -type f -name "*libpython3.7m.so*" 2>/dev/null
+    env | grep LD_LIBRARY_PATH
     make .venv
   displayName: 'Make virtual environment'
 
