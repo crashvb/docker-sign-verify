@@ -13,7 +13,7 @@ import time
 
 from typing import Dict
 
-CHUNK_SIZE = 4096
+CHUNK_SIZE = os.environ.get("DSV_CHUNK_SIZE", 1048576)
 
 
 class FormattedSHA256(str):
