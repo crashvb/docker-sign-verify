@@ -22,7 +22,7 @@ steps:
   displayName: 'Use Python $(python.version)'
 
 - script: |
-    export LD_LIBRARY_PATH="\$(dirname \$(dirname \$(which python3)))/lib"
+    export LD_LIBRARY_PATH="$(dirname $(dirname $(which python3)))/lib"
     #find / -type f -name "*libpython3.7m.so*" 2>/dev/null
     env | grep LD_LIBRARY_PATH
     make .venv
