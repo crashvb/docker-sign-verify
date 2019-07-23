@@ -457,6 +457,7 @@ class ArchiveImageSource(ImageSource):
         image_config = data["image_config"]
 
         # Replicate all of the image layers ...
+        LOGGER.debug("    Replicating image layers ...")
         archive_layers = manifest.get_layers(src_image_name)
         archive_layers_changed = archive_layers.copy()
         for i, archive_layer in enumerate(archive_layers):
@@ -604,7 +605,7 @@ class RegistryV2ImageSource(ImageSource):
         """
         result = None
 
-        if not self.credentials and self.credentials_store:
+        if self.credentials is None and self.credentials_store:
             LOGGER.debug("Using credentials store: %s", self.credentials_store)
 
             # TODO: Add support for secure providers:
@@ -919,6 +920,7 @@ class RegistryV2ImageSource(ImageSource):
         image_config = data["image_config"]
 
         # Replicate all of the image layers ...
+        LOGGER.debug("    Replicating image layers ...")
         registry_layers = manifest.get_layers()
         for i, registry_layer in enumerate(registry_layers):
             if not dest_image_source.layer_exists(dest_image_name, registry_layer):
@@ -1163,6 +1165,7 @@ class DeviceMapperRepositoryImageSource(ImageSource):
         image_config = data["image_config"]
 
         # Replicate all of the image layers ...
+        LOGGER.debug("    Replicating image layers ...")
         repository_layers = manifest.get_layers(src_image_name)
         for i, repository_layer in enumerate(repository_layers):
             if not dest_image_source.layer_exists(dest_image_name, repository_layer):
