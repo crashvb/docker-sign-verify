@@ -26,6 +26,7 @@ urllib3.disable_warnings(urllib3.exceptions.SecurityWarning)
 
 def verify_options(function):
     """Common verification options."""
+
     function = click.argument(
         "images", callback=to_image_name, nargs=-1, required=True
     )(function)
@@ -34,12 +35,14 @@ def verify_options(function):
 
 def verify(context):
     """Verifies an image(s)."""
+
+    results = []
     for image_name in context.obj["images"]:
         if context.obj["check_signatures"]:
             result = context.obj["imagesource"].verify_image_signatures(image_name)
             LOGGER.info(
                 "Image %s (%s) is consistent.",
-                image_name,
+                image_name.resolve_name(),
                 result["image_config"].get_config_digest(),
             )
             LOGGER.info("Image %s signature(s) verified.", len(result["signatures"]))
@@ -47,10 +50,13 @@ def verify(context):
             result = context.obj["imagesource"].verify_image_integrity(image_name)
             LOGGER.info(
                 "Image %s (%s) is consistent.",
-                image_name,
+                image_name.resolve_name(),
                 result["image_config"].get_config_digest(),
             )
             LOGGER.info("Image signature(s) not verified.")
+        results.append(result)
+
+    return results
 
 
 @click.group()
@@ -66,7 +72,6 @@ def cli(context, check_signatures: bool, verbosity: int = 2):
     """Verifies embedded signatures, and the integrity of docker image layers and metadata."""
 
     set_log_levels(verbosity)
-
     context.obj = {"check_signatures": check_signatures}
 
 

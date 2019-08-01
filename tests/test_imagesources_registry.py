@@ -187,7 +187,7 @@ def test_sign_image_same_image_source(
 def test_verify_image_integrity(
     registry_v2_image_source: RegistryV2ImageSource, image: str
 ):
-    """Test image unsigning."""
+    """Test image integrity."""
     image_name = ImageName.parse(image)
 
     def assertions(result: dict):
@@ -200,6 +200,10 @@ def test_verify_image_integrity(
         assert manifest
 
         assert len(result["compressed_layer_files"]) == len(
+            result["uncompressed_layer_files"]
+        )
+
+        assert len(result["uncompressed_layer_files"]) == len(
             result["uncompressed_layer_files"]
         )
 

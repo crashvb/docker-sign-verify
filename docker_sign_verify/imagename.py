@@ -134,12 +134,17 @@ class ImageName:
 
         return self.image
 
+    def resolve_name(self):
+        return "{0}/{1}:{2}".format(
+            self.resolve_endpoint(), self.resolve_image(), self.resolve_tag()
+        )
+
     def resolve_tag(self) -> str:
         """
-        Retrieves resolves the tag name.
+        Resolves the tag name.
 
         Returns:
-            The explicit tag name
+            The explicit tag name.
         """
         if self.tag:
             return self.tag

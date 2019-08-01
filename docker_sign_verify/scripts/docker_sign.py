@@ -26,6 +26,7 @@ urllib3.disable_warnings(urllib3.exceptions.SecurityWarning)
 
 def sign_options(function):
     """Common signature creation options."""
+
     function = click.option(
         "-k",
         "--keyid",
@@ -76,7 +77,7 @@ def sign(context):
     )
     signer = signer_class(context.obj["keyid"], context.obj["keypass"])
 
-    data = context.obj["imagesource"].sign_image(
+    result = context.obj["imagesource"].sign_image(
         signer,
         context.obj["src_image_name"],
         context.obj["imagesource"],
@@ -84,9 +85,11 @@ def sign(context):
     )
     LOGGER.info(
         "Created new image: %s (%s)",
-        context.obj["dest_image_name"],
-        data["image_config"].get_config_digest(),
+        context.obj["dest_image_name"].resolve_name(),
+        result["image_config"].get_config_digest(),
     )
+
+    return result
 
 
 @click.group()
@@ -99,7 +102,6 @@ def cli(context, dry_run: False, verbosity: int = 2):
     """Creates and embeds signatures into docker images."""
 
     set_log_levels(verbosity)
-
     context.obj = {"dry_run": dry_run}
 
 
