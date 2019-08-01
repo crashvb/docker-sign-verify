@@ -64,7 +64,7 @@ class FakeRegistryV2ImageSourceNoLabels(ImageSource):
             The results of the docker_sign_verify.ImageSource::_sign_image_config() method.
         """
         # pylint: disable=protected-access
-        result = self._sign_image_config(FakeSigner(), image_name)
+        result = self._sign_image_config(FakeSigner(), image_name, False)
 
         self.config = result["image_config"]
         self.manifest.set_config_digest(
@@ -121,6 +121,7 @@ class FakeRegistryV2ImageSourceNoLabels(ImageSource):
         src_image_name: ImageName,
         dest_image_source,
         dest_image_name: ImageName,
+        endorse: bool,
     ):
         raise RuntimeError("Logic error; method should not be invoked!")
 

@@ -172,7 +172,7 @@ def test_sign_image_same_image_source(
     # 1. Single signature
     assertions(
         registry_v2_image_source.sign_image(
-            FakeSigner(), src_image_name, registry_v2_image_source, dest_image_name
+            FakeSigner(), src_image_name, registry_v2_image_source, dest_image_name, False
         )
     )
 

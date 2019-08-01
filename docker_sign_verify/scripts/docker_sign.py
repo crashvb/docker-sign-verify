@@ -82,12 +82,20 @@ def sign(context):
         context.obj["src_image_name"],
         context.obj["imagesource"],
         context.obj["dest_image_name"],
+        context.obj["endorse"],
     )
-    LOGGER.info(
-        "Created new image: %s (%s)",
-        context.obj["dest_image_name"].resolve_name(),
-        result["image_config"].get_config_digest(),
-    )
+    if context.obj["dry_run"]:
+        LOGGER.info(
+            "Dry run completed for image: %s (%s)",
+            context.obj["dest_image_name"].resolve_name(),
+            result["image_config"].get_config_digest(),
+        )
+    else:
+        LOGGER.info(
+            "Created new image: %s (%s)",
+            context.obj["dest_image_name"].resolve_name(),
+            result["image_config"].get_config_digest(),
+        )
 
     return result
 
@@ -96,13 +104,19 @@ def sign(context):
 @click.option(
     "--dry-run", help="Do not write to destination image sources.", is_flag=True
 )
+@click.option(
+    "-e",
+    "--endorse",
+    help="Endorse (countersign) the source image, instead of (co)-signing.",
+    is_flag=True,
+)
 @logging_options
 @click.pass_context
-def cli(context, dry_run: False, verbosity: int = 2):
+def cli(context, dry_run: False, endorse: False, verbosity: int = 2):
     """Creates and embeds signatures into docker images."""
 
     set_log_levels(verbosity)
-    context.obj = {"dry_run": dry_run}
+    context.obj = {"dry_run": dry_run, "endorse": endorse}
 
 
 @cli.command()

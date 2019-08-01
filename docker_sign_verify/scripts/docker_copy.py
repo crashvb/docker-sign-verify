@@ -49,11 +49,18 @@ def copy(context):
         result["image_config"],
         result["compressed_layer_files"],
     )
-    LOGGER.info(
-        "Created new image: %s (%s)",
-        context.obj["dest_image_name"].resolve_name(),
-        result["image_config"].get_config_digest(),
-    )
+    if context.obj["dry_run"]:
+        LOGGER.info(
+            "Dry run completed for image: %s (%s)",
+            context.obj["dest_image_name"].resolve_name(),
+            result["image_config"].get_config_digest(),
+        )
+    else:
+        LOGGER.info(
+            "Created new image: %s (%s)",
+            context.obj["dest_image_name"].resolve_name(),
+            result["image_config"].get_config_digest(),
+        )
 
 
 @click.group()
@@ -63,16 +70,19 @@ def copy(context):
     help="Toggles integrity vs integrity and signature checking.",
     show_default=True,
 )
+@click.option(
+    "--dry-run", help="Do not write to destination image sources.", is_flag=True
+)
 @logging_options
 @click.pass_context
-def cli(context, check_signatures: bool, verbosity: int = 2):
+def cli(context, check_signatures: bool, dry_run: False, verbosity: int = 2):
     """
     Replicates docker images while verifying embedded signatures, and the integrity of docker image layers and metadata.
     """
 
     set_log_levels(verbosity)
 
-    context.obj = {"check_signatures": check_signatures}
+    context.obj = {"check_signatures": check_signatures, "dry_run": dry_run}
 
 
 @cli.command()
@@ -93,7 +103,9 @@ def archive(
 
     context.obj["src_image_name"] = src_image_name
     context.obj["dest_image_name"] = dest_image_name
-    context.obj["imagesource"] = ArchiveImageSource(archive=archive)
+    context.obj["imagesource"] = ArchiveImageSource(
+        archive=archive, dry_run=context.obj["dry_run"]
+    )
     copy(context)
 
 
@@ -105,7 +117,7 @@ def registry(context, src_image_name: ImageName, dest_image_name: ImageName):
 
     context.obj["src_image_name"] = src_image_name
     context.obj["dest_image_name"] = dest_image_name
-    context.obj["imagesource"] = RegistryV2ImageSource()
+    context.obj["imagesource"] = RegistryV2ImageSource(dry_run=context.obj["dry_run"])
     copy(context)
 
 
@@ -117,7 +129,9 @@ def repository(context, src_image_name: ImageName, dest_image_name: ImageName):
 
     context.obj["src_image_name"] = src_image_name
     context.obj["dest_image_name"] = dest_image_name
-    context.obj["imagesource"] = DeviceMapperRepositoryImageSource()
+    context.obj["imagesource"] = DeviceMapperRepositoryImageSource(
+        dry_run=context.obj["dry_run"]
+    )
     copy(context)
 
 
