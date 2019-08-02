@@ -16,7 +16,7 @@ import tempfile
 import time
 
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List
 from urllib.parse import urlparse
 
 import gnupg  # Needed for type checking
@@ -34,6 +34,7 @@ from .imageconfig import ImageConfig
 from .imagename import ImageName
 from .signers import Signer
 from .utils import (
+    CHUNK_SIZE,
     copy_file,
     file_exists_in_tar,
     formatted_digest,
@@ -65,13 +66,16 @@ class ImageSource(abc.ABC):
         """
         self.dry_run = dry_run
 
-    def _sign_image_config(self, signer: Signer, image_name: ImageName) -> Dict:
+    def _sign_image_config(
+        self, signer: Signer, image_name: ImageName, endorse: bool
+    ) -> Dict:
         """
         Verifies an image, then signs it without storing it in the image source.
 
         Args:
             signer: The signer used to create the signature value.
             image_name: The image name.
+            endorse: Toggles between signing, and endorsing.
 
         Returns:
             dict:
@@ -84,7 +88,7 @@ class ImageSource(abc.ABC):
         image_config = data["image_config"]  # type: ImageConfig
 
         # Append our signature to any existing signatures ....
-        signature_value = image_config.sign(signer)
+        signature_value = image_config.sign(signer, endorse)
 
         return {
             "image_config": image_config,
@@ -108,15 +112,13 @@ class ImageSource(abc.ABC):
         """
 
         # Retrieve the image configuration digest and layers identifiers from the manifest ...
-        LOGGER.debug("Verifying Integrity: %s ...", image_name)
+        LOGGER.debug("Verifying Integrity: %s ...", image_name.resolve_name())
         manifest = self.get_manifest(image_name)
         config_digest = manifest.get_config_digest(image_name)
         LOGGER.debug("    config digest: %s", xellipsis(config_digest))
         manifest_layers = manifest.get_layers(image_name)
-        LOGGER.debug(
-            "    manifest layers:\n\t\t\t%s",
-            "\n\t\t\t".join([xellipsis(l) for l in manifest_layers]),
-        )
+        LOGGER.debug("    manifest layers:")
+        [LOGGER.debug("        %s", xellipsis(l)) for l in manifest_layers]
 
         # Retrieve the image layers from the image configuration ...
         image_config = self.get_image_config(image_name)
@@ -130,10 +132,8 @@ class ImageSource(abc.ABC):
             "Image config digest mismatch",
         )
         image_layers = image_config.get_image_layers()
-        LOGGER.debug(
-            "    image layers:\n\t\t\t%s",
-            "\n\t\t\t".join([xellipsis(l) for l in image_layers]),
-        )
+        LOGGER.debug("    image layers:")
+        [LOGGER.debug("        %s", xellipsis(l)) for l in image_layers]
 
         # Quick check: Ensure that the layer counts are consistent
         must_be_equal(len(manifest_layers), len(image_layers), "Layer count mismatch")
@@ -182,13 +182,36 @@ class ImageSource(abc.ABC):
         """
 
     @abc.abstractmethod
-    def put_manifest(self, manifest: Manifest, image_name: ImageName = None):
+    def layer_exists(self, image_name: ImageName, layer: FormattedSHA256) -> bool:
         """
-        Assigns the manifest for a given image.
+        Checks if a given image layer exists.
 
         Args:
-            manifest: The image source-specific manifest to be assigned.
-            image_name: The name of the image for which to assign the manifest.
+            image_name: The image name.
+            layer: The layer identifier in the form: <hash type>:<digest value>.
+
+        Returns:
+            bool: True if the layer exists, False otherwise.
+        """
+
+    @abc.abstractmethod
+    def put_image(
+        self,
+        image_source,
+        image_name: ImageName,
+        manifest: Manifest,
+        image_config: ImageConfig,
+        layer_files: List,
+    ):
+        """
+        Stores a given image (manifest, image_config, and layers) from another image source.
+
+        Args:
+            image_source: The source image source.
+            image_name: The name of the image being stored.
+            manifest: The image source-specific manifest to be stored, in source image source format.
+            image_config: The image configuration to be stored.
+            layer_files: List of files from which to read the layer content, in source image source format.
         """
 
     @abc.abstractmethod
@@ -222,16 +245,13 @@ class ImageSource(abc.ABC):
         """
 
     @abc.abstractmethod
-    def layer_exists(self, image_name: ImageName, layer: FormattedSHA256) -> bool:
+    def put_manifest(self, manifest: Manifest, image_name: ImageName = None):
         """
-        Checks if a given image layer exists.
+        Assigns the manifest for a given image.
 
         Args:
-            image_name: The image name.
-            layer: The layer identifier in the form: <hash type>:<digest value>.
-
-        Returns:
-            bool: True if the layer exists, False otherwise.
+            manifest: The image source-specific manifest to be assigned.
+            image_name: The name of the image for which to assign the manifest.
         """
 
     @abc.abstractmethod
@@ -241,6 +261,7 @@ class ImageSource(abc.ABC):
         src_image_name: ImageName,
         dest_image_source,
         dest_image_name: ImageName,
+        endorse: bool,
     ):
         """
         Retrieves, verifies and signs the image, storing it in the destination image source.
@@ -250,6 +271,7 @@ class ImageSource(abc.ABC):
             src_image_name: The source image name.
             dest_image_source: The destination image source into which to store the signed image.
             dest_image_name: The description image name.
+            endorse: Toggles between signing, and endorsing.
 
         Returns:
             dict: as defined by :func:~docker_sign_verify.ImageSource._sign_image_config.
@@ -266,6 +288,7 @@ class ImageSource(abc.ABC):
 
         Returns:
             dict:
+                compressed_layer_files: The list of compressed layer files on disk (optional).
                 image config: The image configuration.
                 manifest: The image source-specific manifest file (archive, registry, repository).
                 uncompressed_layer_files: The list of uncompressed layer files on disk.
@@ -282,23 +305,25 @@ class ImageSource(abc.ABC):
         Returns:
             dict:
                 image config: The image configuration.
+                manifest: The image source-specific manifest file (archive, registry, repository).
                 signatures: as defined by :func:~docker_sign_verify.ImageConfig.verify_signatures.
+                uncompressed_layer_files: The list of uncompressed layer files on disk.
         """
 
         # Verify image integrity (we use the verified values from this point on)
-        image_config = self.verify_image_integrity(image_name)["image_config"]
+        integrity_data = self.verify_image_integrity(image_name)
 
         # Verify image signatures ...
-        LOGGER.debug("Verifying Signature(s): %s ...", image_name)
+        LOGGER.debug("Verifying Signature(s): %s ...", image_name.resolve_name())
         LOGGER.debug(
             "    config digest (signed): %s",
-            xellipsis(image_config.get_config_digest()),
+            xellipsis(integrity_data["image_config"].get_config_digest()),
         )
-        data = image_config.verify_signatures()
+        signature_data = integrity_data["image_config"].verify_signatures()
 
         # List the image signatures ...
         LOGGER.debug("    signatures:")
-        for result in data["results"]:
+        for result in signature_data["results"]:
             # pylint: disable=protected-access
             if isinstance(result, gnupg._parsers.Verify):
                 if not result.valid:
@@ -329,7 +354,12 @@ class ImageSource(abc.ABC):
 
         LOGGER.debug("Signature check passed.")
 
-        return {"image_config": image_config, "signatures": data["results"]}
+        return {
+            "image_config": integrity_data["image_config"],
+            "manifest": integrity_data["manifest"],
+            "signatures": signature_data["results"],
+            "uncompressed_layer_files": integrity_data["uncompressed_layer_files"],
+        }
 
 
 class ArchiveImageSource(ImageSource):
@@ -338,7 +368,6 @@ class ArchiveImageSource(ImageSource):
     """
 
     FILE_ARCHIVE_MANIFEST = "manifest.json"
-    CHUNK_SIZE = 4096
 
     def __init__(self, *, archive, **kwargs):
         """
@@ -394,6 +423,20 @@ class ArchiveImageSource(ImageSource):
         )
         return ArchiveManifest(raw_archive_manifest)
 
+    def layer_exists(self, image_name: ImageName, layer: FormattedSHA256) -> bool:
+        return self._file_exists(ArchiveManifest.digest_to_layer(layer))
+
+    def put_image(
+        self,
+        image_source,
+        image_name: ImageName,
+        manifest: Manifest,
+        image_config: ImageConfig,
+        layer_files: List,
+    ):
+        # TODO: Implement this method, refactor sign_image to use it ...
+        raise NotImplementedError
+
     def put_image_config(self, image_name: ImageName, image_config: ImageConfig):
         if self.dry_run:
             LOGGER.debug("Dry Run: skipping put_image_config")
@@ -438,20 +481,22 @@ class ArchiveImageSource(ImageSource):
                 str(manifest).encode("utf-8"),
             )
 
-    def layer_exists(self, image_name: ImageName, layer: FormattedSHA256) -> bool:
-        return self._file_exists(ArchiveManifest.digest_to_layer(layer))
-
     def sign_image(
         self,
         signer: Signer,
         src_image_name: ImageName,
         dest_image_source: ImageSource,
         dest_image_name: ImageName,
+        endorse: bool,
     ):
-        LOGGER.debug("Signing: %s ...", src_image_name)
+        LOGGER.debug(
+            "%s: %s ...",
+            "Endorsing" if endorse else "Signing",
+            src_image_name.resolve_name(),
+        )
 
         # Generate a signed image configuration ...
-        data = self._sign_image_config(signer, src_image_name)
+        data = self._sign_image_config(signer, src_image_name, endorse)
         manifest = data["verify_image_data"]["manifest"]
         LOGGER.debug("    Signature:\n%s", data["signature_value"])
         image_config = data["image_config"]
@@ -498,7 +543,8 @@ class ArchiveImageSource(ImageSource):
                 "Unknown derived class: {0}".format(type(dest_image_source))
             )
 
-        LOGGER.debug("Created new image: %s", dest_image_name)
+        if not self.dry_run:
+            LOGGER.debug("Created new image: %s", dest_image_name.resolve_name())
 
         return data
 
@@ -542,8 +588,6 @@ class RegistryV2ImageSource(ImageSource):
     MANIFEST_URL_PATTERN = "https://{0}/v2/{1}/manifests/{2}"
 
     DEFAULT_CREDENTIALS_STORE = Path.home().joinpath(".docker/config.json")
-
-    CHUNK_SIZE = 4096
 
     def __init__(self, *, credentials_store=None, **kwargs):
         """
@@ -802,9 +846,10 @@ class RegistryV2ImageSource(ImageSource):
             image_name.resolve_endpoint(), image_name.resolve_image(), layer
         )
         response = requests.get(url, headers=headers, stream=True)
+        response.raise_for_status()
 
         hasher = hashlib.sha256()
-        for chunk in response.iter_content(chunk_size=RegistryV2ImageSource.CHUNK_SIZE):
+        for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
             if not chunk:
                 break
             file.write(chunk)
@@ -832,6 +877,52 @@ class RegistryV2ImageSource(ImageSource):
         raw_registry_manifest = response.content
 
         return RegistryV2Manifest(raw_registry_manifest)
+
+    def layer_exists(self, image_name: ImageName, layer: FormattedSHA256) -> bool:
+        url = RegistryV2ImageSource.BLOB_URL_PATTERN.format(
+            image_name.resolve_endpoint(), image_name.resolve_image(), layer
+        )
+        headers = self._get_request_headers(image_name)
+        response = requests.head(url, headers=headers)
+
+        return response.status_code in [200, 307]
+
+    def put_image(
+        self,
+        image_source,
+        image_name: ImageName,
+        manifest: Manifest,
+        image_config: ImageConfig,
+        layer_files: List,
+    ):
+        # Replicate all of the image layers ...
+        LOGGER.debug("    Replicating image layers ...")
+        manifest_layers = manifest.get_layers()
+        for i, manifest_layer in enumerate(manifest_layers):
+            if not self.layer_exists(image_name, manifest_layer):
+                if isinstance(image_source, RegistryV2ImageSource):
+                    image_source.put_image_layer_from_disk(image_name, layer_files[i])
+                else:
+                    raise RuntimeError(
+                        "Translation from '{0}' to '{1}' is not supported!".format(
+                            type(image_source), type(self)
+                        )
+                    )
+
+        # Replicate the image configuration ...
+        LOGGER.debug("    Replicating image configuration ...")
+        self.put_image_config(image_name, image_config)
+
+        # Replicate the manifest ...
+        LOGGER.debug("    Replicating image manifest ...")
+        if isinstance(image_source, RegistryV2ImageSource):
+            self.put_manifest(manifest, image_name)
+        else:
+            raise RuntimeError(
+                "Translation from '{0}' to '{1}' is not supported!".format(
+                    type(image_source), type(self)
+                )
+            )
 
     def put_image_config(self, image_name: ImageName, image_config: ImageConfig):
         if self.dry_run:
@@ -864,7 +955,7 @@ class RegistryV2ImageSource(ImageSource):
         hasher = hashlib.sha256()
         while True:
             offset = file.tell()
-            chunk = file.read(RegistryV2ImageSource.CHUNK_SIZE)
+            chunk = file.read(CHUNK_SIZE)
             if not chunk:
                 break
             location = self.resume_blob_upload(location, offset, chunk).headers[
@@ -895,63 +986,44 @@ class RegistryV2ImageSource(ImageSource):
 
         return response
 
-    def layer_exists(self, image_name: ImageName, layer: FormattedSHA256) -> bool:
-        url = RegistryV2ImageSource.BLOB_URL_PATTERN.format(
-            image_name.resolve_endpoint(), image_name.resolve_image(), layer
-        )
-        headers = self._get_request_headers(image_name)
-        response = requests.head(url, headers=headers)
-
-        return response.status_code in [200, 307]
-
     def sign_image(
         self,
         signer: Signer,
         src_image_name: ImageName,
         dest_image_source: ImageSource,
         dest_image_name: ImageName,
+        endorse: bool,
     ):
-        LOGGER.debug("Signing: %s ...", src_image_name)
+        LOGGER.debug(
+            "%s: %s ...",
+            "Endorsing" if endorse else "Signing",
+            src_image_name.resolve_name(),
+        )
 
         # Generate a signed image configuration ...
-        data = self._sign_image_config(signer, src_image_name)
-        manifest = data["verify_image_data"]["manifest"]
+        data = self._sign_image_config(signer, src_image_name, endorse)
         LOGGER.debug("    Signature:\n%s", data["signature_value"])
         image_config = data["image_config"]
+        config_digest = image_config.get_config_digest()
+        LOGGER.debug("    config digest (signed): %s", config_digest)
 
-        # Replicate all of the image layers ...
-        LOGGER.debug("    Replicating image layers ...")
-        registry_layers = manifest.get_layers()
-        for i, registry_layer in enumerate(registry_layers):
-            if not dest_image_source.layer_exists(dest_image_name, registry_layer):
-                dest_image_source.put_image_layer_from_disk(
-                    dest_image_name,
-                    data["verify_image_data"]["compressed_layer_files"][i],
-                )
+        # Generate a new registry manifest ...
+        manifest = copy.deepcopy(
+            data["verify_image_data"]["manifest"]
+        )  # type: RegistryV2Manifest
+        manifest.set_config_digest(config_digest, len(image_config.get_config()))
+        data["manifest_signed"] = manifest
 
-        # Push the new image configuration ...
-        config_digest_signed = image_config.get_config_digest()
-        LOGGER.debug("    config digest (signed): %s", config_digest_signed)
-        dest_image_source.put_image_config(dest_image_name, image_config)
+        dest_image_source.put_image(
+            self,
+            dest_image_name,
+            manifest,
+            image_config,
+            data["verify_image_data"]["compressed_layer_files"],
+        )
 
-        # Generate a new registry manifest, and push ...
-        if isinstance(dest_image_source, ArchiveImageSource):
-            raise NotImplementedError
-        elif isinstance(dest_image_source, RegistryV2ImageSource):
-            manifest_signed = copy.deepcopy(manifest)  # type: RegistryV2Manifest
-            manifest_signed.set_config_digest(
-                config_digest_signed, len(image_config.get_config())
-            )
-            data["manifest_signed"] = manifest_signed
-            dest_image_source.put_manifest(manifest_signed, dest_image_name)
-        elif isinstance(dest_image_source, DeviceMapperRepositoryImageSource):
-            raise NotImplementedError
-        else:
-            raise RuntimeError(
-                "Unknown derived class: {0}".format(type(dest_image_source))
-            )
-
-        LOGGER.debug("Created new image: %s", dest_image_name)
+        if not self.dry_run:
+            LOGGER.debug("Created new image: %s", dest_image_name.resolve_name())
 
         return data
 
@@ -1010,8 +1082,6 @@ class DeviceMapperRepositoryImageSource(ImageSource):
     DM_LAYER_ROOT = DOCKER_ROOT.joinpath("image/devicemapper/layerdb/sha256")
     DM_METADATA_ROOT = DOCKER_ROOT.joinpath("devicemapper/metadata")
     DM_REPOSITORIES = DOCKER_ROOT.joinpath("image/devicemapper/repositories.json")
-
-    CHUNK_SIZE = 4096
 
     def __init__(self, **kwargs):
         super(DeviceMapperRepositoryImageSource, self).__init__(**kwargs)
@@ -1100,6 +1170,30 @@ class DeviceMapperRepositoryImageSource(ImageSource):
         )
         return DeviceMapperRepositoryManifest(raw_repository_manifest)
 
+    def layer_exists(self, image_name: ImageName, layer: FormattedSHA256) -> bool:
+        result = False
+        path_layer = DeviceMapperRepositoryImageSource.DM_LAYER_ROOT.joinpath(
+            layer.sha256
+        ).joinpath("cache-id")
+        if path_layer.exists():
+            cache_id = read_file(path_layer).decode("utf-8")
+            path_cache = DeviceMapperRepositoryImageSource.DM_METADATA_ROOT.joinpath(
+                cache_id
+            )
+            result = path_cache.exists()
+        return result
+
+    def put_image(
+        self,
+        image_source,
+        image_name: ImageName,
+        manifest: Manifest,
+        image_config: ImageConfig,
+        layer_files: List,
+    ):
+        # TODO: Implement this method, refactor sign_image to use it ...
+        raise NotImplementedError
+
     def put_image_config(self, image_name: ImageName, image_config: ImageConfig):
         if self.dry_run:
             LOGGER.debug("Dry Run: skipping put_image_config")
@@ -1136,30 +1230,22 @@ class DeviceMapperRepositoryImageSource(ImageSource):
         path.parent.mkdir(exist_ok=True, parents=True)
         write_file(path, str(manifest).encode("utf-8"))
 
-    def layer_exists(self, image_name: ImageName, layer: FormattedSHA256) -> bool:
-        result = False
-        path_layer = DeviceMapperRepositoryImageSource.DM_LAYER_ROOT.joinpath(
-            layer.sha256
-        ).joinpath("cache-id")
-        if path_layer.exists():
-            cache_id = read_file(path_layer).decode("utf-8")
-            path_cache = DeviceMapperRepositoryImageSource.DM_METADATA_ROOT.joinpath(
-                cache_id
-            )
-            result = path_cache.exists()
-        return result
-
     def sign_image(
         self,
         signer: Signer,
         src_image_name: ImageName,
         dest_image_source: ImageSource,
         dest_image_name: ImageName,
+        endorse: bool,
     ):
-        LOGGER.debug("Signing: %s ...", src_image_name)
+        LOGGER.debug(
+            "%s: %s ...",
+            "Endorsing" if endorse else "Signing",
+            src_image_name.resolve_name(),
+        )
 
         # Generate a signed image configuration ...
-        data = self._sign_image_config(signer, src_image_name)
+        data = self._sign_image_config(signer, src_image_name, endorse)
         manifest = data["verify_image_data"]["manifest"]
         LOGGER.debug("    Signature:\n%s", data["signature_value"])
         image_config = data["image_config"]
@@ -1199,7 +1285,8 @@ class DeviceMapperRepositoryImageSource(ImageSource):
                 "Unknown derived class: {0}".format(type(dest_image_source))
             )
 
-        LOGGER.debug("Created new image: %s", dest_image_name)
+        if not self.dry_run:
+            LOGGER.debug("Created new image: %s", dest_image_name.resolve_name())
 
         return data
 

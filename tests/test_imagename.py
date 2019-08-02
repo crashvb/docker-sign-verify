@@ -77,13 +77,45 @@ def test_endpoint(image_name: ImageName):
 
 
 def test_image(image_name: ImageName):
-    """Tests endpoint image."""
+    """Tests image retrieval."""
     assert image_name.image == "namespace/image"
 
 
 def test_tag(image_name: ImageName):
-    """Tests endpoint tag."""
+    """Tests tag retrieval."""
     assert image_name.tag == "tag"
 
 
-# TODO: Test resolve methods ...
+def test_resolv_endpoint(image_name: ImageName):
+    """Test endpoint resolution."""
+    assert image_name.resolve_endpoint() == "endpoint:port"
+
+    image_name = ImageName(None, image_name.image, image_name.tag)
+    assert image_name.resolve_endpoint() == ImageName.DEFAULT_REGISTRY_ENDPOINT
+
+
+def test_resolv_image(image_name: ImageName):
+    """Test image resolution."""
+    assert image_name.resolve_image() == "namespace/image"
+
+    image_name = ImageName(image_name.endpoint, "image", image_name.tag)
+    assert image_name.resolve_image() == "{0}/{1}".format(
+        ImageName.DEFAULT_REGISTRY_NAMESPACE, image_name.image
+    )
+
+
+def test_resolv_name(image_name: ImageName):
+    """Test name resolution."""
+    assert image_name.resolve_name() == "{0}/{1}:{2}".format(
+        image_name.resolve_endpoint(),
+        image_name.resolve_image(),
+        image_name.resolve_tag(),
+    )
+
+
+def test_resolv_tag(image_name: ImageName):
+    """Test tag resolution."""
+    assert image_name.resolve_tag() == "tag"
+
+    image_name = ImageName(image_name.endpoint, image_name.image, None)
+    assert image_name.resolve_tag() == ImageName.DEFAULT_REGISTRY_TAG

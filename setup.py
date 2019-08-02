@@ -30,6 +30,7 @@ setup(
     description="A utility that can be used to sign and verify docker images.",
     entry_points="""
         [console_scripts]
+        docker-copy=docker_sign_verify.scripts.docker_copy:cli
         docker-sign=docker_sign_verify.scripts.docker_sign:cli
         docker-verify=docker_sign_verify.scripts.docker_verify:cli
     """,

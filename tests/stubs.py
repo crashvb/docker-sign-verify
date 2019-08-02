@@ -2,6 +2,8 @@
 
 """Stub classes for offline testing."""
 
+from typing import List
+
 from docker_sign_verify import (
     FormattedSHA256,
     ImageConfig,
@@ -62,7 +64,7 @@ class FakeRegistryV2ImageSourceNoLabels(ImageSource):
             The results of the docker_sign_verify.ImageSource::_sign_image_config() method.
         """
         # pylint: disable=protected-access
-        result = self._sign_image_config(FakeSigner(), image_name)
+        result = self._sign_image_config(FakeSigner(), image_name, False)
 
         self.config = result["image_config"]
         self.manifest.set_config_digest(
@@ -88,7 +90,17 @@ class FakeRegistryV2ImageSourceNoLabels(ImageSource):
             self.manifest = RegistryV2Manifest(manifest)
         return self.manifest
 
-    def put_manifest(self, manifest: Manifest, image_name: ImageName = None):
+    def layer_exists(self, image_name: ImageName, layer: FormattedSHA256) -> bool:
+        return self.does_layer_exists
+
+    def put_image(
+        self,
+        image_source,
+        image_name: ImageName,
+        manifest: Manifest,
+        image_config: ImageConfig,
+        layer_files: List,
+    ):
         raise RuntimeError("Logic error; method should not be invoked!")
 
     def put_image_config(self, image_name: ImageName, image_config: ImageConfig):
@@ -100,8 +112,8 @@ class FakeRegistryV2ImageSourceNoLabels(ImageSource):
     def put_image_layer_from_disk(self, image_name: ImageName, file):
         raise RuntimeError("Logic error; method should not be invoked!")
 
-    def layer_exists(self, image_name: ImageName, layer: FormattedSHA256) -> bool:
-        return self.does_layer_exists
+    def put_manifest(self, manifest: Manifest, image_name: ImageName = None):
+        raise RuntimeError("Logic error; method should not be invoked!")
 
     def sign_image(
         self,
@@ -109,6 +121,7 @@ class FakeRegistryV2ImageSourceNoLabels(ImageSource):
         src_image_name: ImageName,
         dest_image_source,
         dest_image_name: ImageName,
+        endorse: bool,
     ):
         raise RuntimeError("Logic error; method should not be invoked!")
 
