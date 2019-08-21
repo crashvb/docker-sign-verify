@@ -2,7 +2,7 @@
 
 -include makefile.config
 
-.PHONY: build clean default deploy purge sign test test_code test_package venv verify
+.PHONY: black build clean default deploy purge sign test test_code test_package venv verify
 
 tmpdir:=$(shell mktemp --directory)
 
@@ -21,7 +21,7 @@ verify:
 	find dist -type f -iname "*.asc" -exec gpg --verify {} \;
 
 test:
-	python -m pytest --log-cli-level info
+	python -m pytest --log-cli-level info $(args)
 
 test_code:
 	# Note: https://github.com/PyCQA/pylint/issues/289

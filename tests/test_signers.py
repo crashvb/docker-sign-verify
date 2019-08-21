@@ -47,6 +47,9 @@ def pkisigner(request):
 
 
 # def test_gpgsigner(caplog, gpgsigner: GPGSigner):
+@pytest.mark.skip(
+    reason="Fails on systems with GPG2 without loopback agent configured: https://github.com/isislovecruft/python-gnupg/issues/257"
+)
 def test_gpgsigner(gpgsigner: GPGSigner):
     """Test configuration signing and verification using GPG."""
 
