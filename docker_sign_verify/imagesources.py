@@ -869,7 +869,7 @@ class RegistryV2ImageSource(ImageSource):
             image_name, {"Accept": RegistryV2ImageSource.MANIFEST_MIME_TYPE}
         )
         url = RegistryV2ImageSource.MANIFEST_URL_PATTERN.format(
-            image_name.resolve_endpoint(), image_name.resolve_image(), image_name.tag
+            image_name.resolve_endpoint(), image_name.resolve_image(), image_name.resolve_tag()
         )
 
         response = requests.get(url, headers=headers)
@@ -973,7 +973,7 @@ class RegistryV2ImageSource(ImageSource):
             LOGGER.debug("Dry Run: skipping put_manifest")
             return
         url = RegistryV2ImageSource.MANIFEST_URL_PATTERN.format(
-            image_name.resolve_endpoint(), image_name.resolve_image(), image_name.tag
+            image_name.resolve_endpoint(), image_name.resolve_image(), image_name.resolve_tag()
         )
         headers = self._get_request_headers(
             image_name, {"Content-Type": RegistryV2ImageSource.MANIFEST_MIME_TYPE}
