@@ -47,6 +47,7 @@ def copy(context):
         context.obj["dest_image_name"],
         result["manifest"],
         result["image_config"],
+        # TODO: Select compressed_layer_files vs uncompressed_layer_files based on type(imagesource).
         result["compressed_layer_files"],
     )
     if context.obj["dry_run"]:

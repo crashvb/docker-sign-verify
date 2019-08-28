@@ -304,6 +304,7 @@ class ImageSource(abc.ABC):
 
         Returns:
             dict:
+                compressed_layer_files: The list of compressed layer files on disk (optional).
                 image config: The image configuration.
                 manifest: The image source-specific manifest file (archive, registry, repository).
                 signatures: as defined by :func:~docker_sign_verify.ImageConfig.verify_signatures.
@@ -355,6 +356,7 @@ class ImageSource(abc.ABC):
         LOGGER.debug("Signature check passed.")
 
         return {
+            "compressed_layer_files": integrity_data["compressed_layer_files"],
             "image_config": integrity_data["image_config"],
             "manifest": integrity_data["manifest"],
             "signatures": signature_data["results"],
@@ -568,6 +570,7 @@ class ArchiveImageSource(ImageSource):
         LOGGER.debug("Integrity check passed.")
 
         return {
+            "compressed_layer_files": "TODO",
             "image_config": data["image_config"],
             "manifest": data["manifest"],
             "uncompressed_layer_files": uncompressed_layer_files,
@@ -1313,6 +1316,7 @@ class DeviceMapperRepositoryImageSource(ImageSource):
         LOGGER.debug("Integrity check passed.")
 
         return {
+            "compressed_layer_files": "TODO",
             "image_config": data["image_config"],
             "manifest": data["manifest"],
             "uncompressed_layer_files": uncompressed_layer_files,
