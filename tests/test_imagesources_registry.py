@@ -90,6 +90,7 @@ def test__get_request_headers(
     assert expected_credentials in headers["Authorization"]
 
 
+@pytest.mark.online
 @pytest.mark.parametrize("image", KNOWN_GOOD_IMAGE_LIST)
 def test_get_iamge_config(registry_v2_image_source: RegistryV2ImageSource, image: str):
     """Test image configuration retrieval."""
@@ -100,6 +101,7 @@ def test_get_iamge_config(registry_v2_image_source: RegistryV2ImageSource, image
     assert isinstance(config, ImageConfig)
 
 
+@pytest.mark.online
 @pytest.mark.parametrize("image", KNOWN_GOOD_IMAGE_LIST)
 def test_get_image_layer_to_disk(
     registry_v2_image_source: RegistryV2ImageSource, image: str
@@ -116,6 +118,7 @@ def test_get_image_layer_to_disk(
     assert result["digest"] == config_digest
 
 
+@pytest.mark.online
 @pytest.mark.parametrize("image", KNOWN_GOOD_IMAGE_LIST)
 def test_get_manifest(registry_v2_image_source: RegistryV2ImageSource, image: str):
     """Test manifest retrieval."""
@@ -126,6 +129,7 @@ def test_get_manifest(registry_v2_image_source: RegistryV2ImageSource, image: st
     assert isinstance(manifest, RegistryV2Manifest)
 
 
+@pytest.mark.online
 @pytest.mark.parametrize("image", KNOWN_GOOD_IMAGE_LIST)
 def test_layer_exists(registry_v2_image_source: RegistryV2ImageSource, image: str):
     """Test layer existence."""
@@ -137,6 +141,7 @@ def test_layer_exists(registry_v2_image_source: RegistryV2ImageSource, image: st
     )
 
 
+@pytest.mark.online
 @pytest.mark.parametrize("image", KNOWN_GOOD_IMAGE_LIST)
 def test_sign_image_same_image_source(
     registry_v2_image_source: RegistryV2ImageSource, image: str
@@ -172,7 +177,11 @@ def test_sign_image_same_image_source(
     # 1. Single signature
     assertions(
         registry_v2_image_source.sign_image(
-            FakeSigner(), src_image_name, registry_v2_image_source, dest_image_name, False
+            FakeSigner(),
+            src_image_name,
+            registry_v2_image_source,
+            dest_image_name,
+            False,
         )
     )
 
@@ -183,6 +192,7 @@ def test_sign_image_same_image_source(
 # TODO: test_sign_image_different_image_source
 
 
+@pytest.mark.online
 @pytest.mark.parametrize("image", KNOWN_GOOD_IMAGE_LIST)
 def test_verify_image_integrity(
     registry_v2_image_source: RegistryV2ImageSource, image: str
