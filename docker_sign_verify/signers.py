@@ -87,7 +87,7 @@ class GPGSigner(Signer):
 
     HOMEDIR = os.environ.get("DSV_GPG_DATASTORE", Path.home().joinpath(".gnupg"))
 
-    def __init__(self, keyid=None, passphrase=None, homedir=HOMEDIR):
+    def __init__(self, keyid: str = None, passphrase: str = None, homedir=HOMEDIR):
         """
         Args:
             keyid: The GPG key identifier, only required for signing.
@@ -98,9 +98,11 @@ class GPGSigner(Signer):
         self.passphrase = passphrase
 
         LOGGER.debug("Using trust store: %s", homedir)
-        self.gpg = gnupg.GPG(homedir=homedir)
+        self.gpg = gnupg.GPG(homedir=homedir, ignore_homedir_permissions=True)
 
-    def _debug_init_store(self, name="DSV Test Key", email="test@key.com"):
+    def _debug_init_store(
+        self, name: str = "DSV Test Key", email: str = "test@key.com"
+    ):
         """
         Initializes a new GPG keystore for testing purposes.
 
@@ -158,7 +160,7 @@ class PKISigner(Signer):
     TAG_START = "-----BEGIN PKI SIGNATURE-----"
     TAG_END = "-----END PKI SIGNATURE-----"
 
-    def __init__(self, keypair_path=KEYPAIR, passphrase=None):
+    def __init__(self, keypair_path=KEYPAIR, passphrase: str = None):
         """
         Reference: https://www.digicert.com/ssl-support/pem-ssl-creation.htm
         Args:
@@ -173,7 +175,7 @@ class PKISigner(Signer):
 
         LOGGER.debug("Using keypair: %s", self.keypair_path)
 
-    def _debug_init_keypair(self, bits=2048):
+    def _debug_init_keypair(self, bits: int = 2048):
         """
         Initializes a new PKI certificate pair.
 
