@@ -87,7 +87,7 @@ class GPGSigner(Signer):
 
     HOMEDIR = os.environ.get("DSV_GPG_DATASTORE", Path.home().joinpath(".gnupg"))
 
-    def __init__(self, keyid: str = None, passphrase: str = None, homedir=HOMEDIR):
+    def __init__(self, keyid: str = None, passphrase: str = None, homedir: str = ""):
         """
         Args:
             keyid: The GPG key identifier, only required for signing.
@@ -96,9 +96,10 @@ class GPGSigner(Signer):
         """
         self.keyid = keyid
         self.passphrase = passphrase
+        self.homedir = homedir if homedir != "" else GPGSigner.HOMEDIR
 
-        LOGGER.debug("Using trust store: %s", homedir)
-        self.gpg = gnupg.GPG(homedir=homedir, ignore_homedir_permissions=True)
+        LOGGER.debug("Using trust store: %s", self.homedir)
+        self.gpg = gnupg.GPG(homedir=self.homedir, ignore_homedir_permissions=True)
 
     def _debug_init_store(
         self, name: str = "DSV Test Key", email: str = "test@key.com"
