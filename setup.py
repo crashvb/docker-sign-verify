@@ -34,7 +34,7 @@ setup(
         docker-sign=docker_sign_verify.scripts.docker_sign:cli
         docker-verify=docker_sign_verify.scripts.docker_verify:cli
     """,
-    extras_require={"dev": ["black", "pylint", "twine", "pytest", "wheel"]},
+    extras_require={"dev": ["black", "pylint", "pytest", "twine", "wheel"]},
     include_package_data=True,
     install_requires=[
         "canonicaljson",

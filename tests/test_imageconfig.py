@@ -10,7 +10,7 @@ from typing import List
 
 import pytest
 
-from docker_sign_verify import FormattedSHA256, ImageConfig, Signer
+from docker_sign_verify import FormattedSHA256, ImageConfig, Signer, SignatureTypes
 
 from .stubs import _signer_for_signature, FakeSigner
 from .testutils import get_test_data
@@ -229,8 +229,11 @@ def test_sign_endorse(
     """Test configuration endorsement for signed and unsigned configurations."""
 
     signer = FakeSigner()
-    assert image_config.sign(signer, True) == signer.signature_value
-    assert image_config_signed.sign(signer, True) == signer.signature_value
+    assert image_config.sign(signer, SignatureTypes.ENDORSE) == signer.signature_value
+    assert (
+        image_config_signed.sign(signer, SignatureTypes.ENDORSE)
+        == signer.signature_value
+    )
 
     # Previously unsigned configurations should now contain the new signature.
     assert b"BEGIN FAKE SIGNATURE" in image_config.get_config()
@@ -248,6 +251,38 @@ def test_sign_endorse(
     assert signatures_signed[0]["signature"] == signature
     assert signatures_signed[1]["digest"] == config_digest_signed_canonical
     assert signatures_signed[1]["signature"] == signer.signature_value
+
+
+def test_sign_resign(
+    image_config: ImageConfig,
+    image_config_signed: ImageConfig,
+    config_digest_canonical: str,
+    config_digest_signed_canonical: str,
+    signature: str,
+):
+    """Test configuration resigning for signed and unsigned configurations."""
+
+    signer = FakeSigner()
+    assert image_config.sign(signer, SignatureTypes.RESIGN) == signer.signature_value
+    assert (
+        image_config_signed.sign(signer, SignatureTypes.RESIGN)
+        == signer.signature_value
+    )
+
+    # Previously unsigned configurations should now contain the new signature.
+    assert b"BEGIN FAKE SIGNATURE" in image_config.get_config()
+    signatures = image_config.get_signature_list()
+    assert len(signatures) == 1
+    assert signatures[0]["digest"] == config_digest_canonical
+    assert signatures[0]["signature"] == signer.signature_value
+
+    # Previously signed configurations should now contain (only) the new signature.
+    assert b"BEGIN FAKE SIGNATURE" in image_config_signed.get_config()
+    assert b"BEGIN PGP SIGNATURE" not in image_config_signed.get_config()
+    signatures_signed = image_config_signed.get_signature_list()
+    assert len(signatures_signed) == 1
+    assert signatures[0]["digest"] == config_digest_canonical
+    assert signatures[0]["signature"] == signer.signature_value
 
 
 def test_sign_endorse_recursive(image_config: ImageConfig):
@@ -276,23 +311,27 @@ def test_sign_endorse_recursive(image_config: ImageConfig):
                     assert signature["digest"] == temp.get_config_digest_canonical()
 
             def append_new_image_config(
-                config: ImageConfig, endorse: bool = False, iteration=i
+                config: ImageConfig,
+                signature_type: SignatureTypes = SignatureTypes.SIGN,
+                iteration=i,
             ):
                 signer = FakeSigner(
                     "<<< {0} {1}: {2} >>>".format(
                         iteration,
-                        "Endorsing" if endorse else "Signing",
+                        "Endorsing"
+                        if signature_type == SignatureTypes.ENDORSE
+                        else "Signing",
                         config.get_config_digest_canonical(),
                     )
                 )
-                config.sign(signer, endorse)
+                config.sign(signer, signature_type)
                 stack.append(config)
 
             # TODO: Add optimization to stop appending to the stack if they will never be validated
 
             # Push two more image configurations on to the stack: one signed, one endorsed ...
             append_new_image_config(copy.deepcopy(stack[0]))
-            append_new_image_config(stack.pop(0), True)
+            append_new_image_config(stack.pop(0), SignatureTypes.ENDORSE)
 
 
 def test_verify_signatures(image_config: ImageConfig):
@@ -354,7 +393,7 @@ def test_verify_signatures_manipulated_signatures(image_config: ImageConfig):
 
     # Restore the unmodified signature and endorse ...
     image_config.set_signature_list(signatures)
-    assert image_config.sign(signer, True) == signer.signature_value
+    assert image_config.sign(signer, SignatureTypes.ENDORSE) == signer.signature_value
 
     # Sanity check
     assert image_config.verify_signatures()["results"][0]["valid"] is True

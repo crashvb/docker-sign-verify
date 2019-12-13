@@ -11,6 +11,7 @@ import copy
 import json
 import logging
 
+from enum import Enum
 from typing import Dict, List
 
 import canonicaljson
@@ -19,6 +20,16 @@ from .signers import Signer
 from .utils import formatted_digest, must_be_equal, FormattedSHA256
 
 LOGGER = logging.getLogger(__name__)
+
+
+class SignatureTypes(Enum):
+    """
+    Docker signature types.
+    """
+
+    SIGN = 0  # Append (Co-)signature
+    ENDORSE = 1  # Append endorsement
+    RESIGN = 2  # Replace signature(s)
 
 
 class ImageConfig:
@@ -162,7 +173,18 @@ class ImageConfig:
         Returns:
             The listing of image layer identifiers.
         """
-        diff_ids = self.config_json["rootfs"]["diff_ids"]
+        # Note: We need to handle both key cases, as Microsoft does not conform to the standard.
+        try:
+            rootfs = self.config_json["rootfs"]
+        except KeyError:
+            rootfs = self.config_json["rootfS"]
+
+        if rootfs is None:
+            raise RuntimeError(
+                "Unable to locate rootf[Ss] key within image configuration!"
+            )
+
+        diff_ids = rootfs["diff_ids"]
         return [FormattedSHA256.parse(x) for x in diff_ids]
 
     def clear_signature_list(self):
@@ -206,7 +228,9 @@ class ImageConfig:
         labels[ImageConfig.SIGNATURES_LABEL] = json.dumps(signatures)
         self._set_config_json(self.config_json)
 
-    def sign(self, signer: Signer, endorse: bool = False) -> str:
+    def sign(
+        self, signer: Signer, signature_type: SignatureTypes = SignatureTypes.SIGN
+    ) -> str:
         """
         Signs or endorses the SHA256 digest value of image configuration, in canonical JSON form, and appends it to the
         signature list.
@@ -221,20 +245,24 @@ class ImageConfig:
 
         Args:
             signer: The signer used to create the signature value.
-            endorse: Toggles between signing (default), and endorsing.
+            signature_type: Specifies what type of signature action to perform.
 
         Returns:
             The signature value as defined by :func:~docker_sign_verify.Signers.sign.
         """
         signatures = self.get_signature_list()
-        if not endorse:
+        if signature_type != SignatureTypes.ENDORSE:
             self.clear_signature_list()
         digest = self.get_config_digest_canonical()
         signature = signer.sign(digest.encode("utf-8"))
         if not signature:
             raise RuntimeError("Failed to create signature!")
 
-        signatures.append({"digest": digest, "signature": signature})
+        entry = {"digest": digest, "signature": signature}
+        if signature_type == SignatureTypes.RESIGN:
+            signatures = [entry]
+        else:
+            signatures.append(entry)
         self.set_signature_list(signatures)
 
         return signature

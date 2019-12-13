@@ -29,6 +29,7 @@ def pytest_collection_modifyitems(config, items):
         if "online" in item.keywords:
             item.add_marker(skip_online)
 
+
 def pytest_configure(config):
     """pytest configuration hook."""
     config.addinivalue_line("markers", "online: allow execution of online tests.")

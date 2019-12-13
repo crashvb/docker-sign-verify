@@ -2,6 +2,9 @@
 
 """Utility classes."""
 
+import pytest
+
+from click.testing import CliRunner
 from pathlib import Path
 
 
@@ -21,3 +24,10 @@ def get_test_data(request, klass, name, mode="rb"):
             # TODO: How do we / Should we serialize binary data?
             # request.config.cache.set(key, result)
     return result
+
+
+@pytest.fixture
+def runner():
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        yield runner

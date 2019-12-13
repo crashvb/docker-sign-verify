@@ -30,7 +30,7 @@ from .manifests import (
     Manifest,
     RegistryV2Manifest,
 )
-from .imageconfig import ImageConfig
+from .imageconfig import ImageConfig, SignatureTypes
 from .imagename import ImageName
 from .signers import Signer
 from .utils import (
@@ -67,7 +67,7 @@ class ImageSource(abc.ABC):
         self.dry_run = dry_run
 
     def _sign_image_config(
-        self, signer: Signer, image_name: ImageName, endorse: bool
+        self, signer: Signer, image_name: ImageName, signature_type: SignatureTypes
     ) -> Dict:
         """
         Verifies an image, then signs it without storing it in the image source.
@@ -75,7 +75,7 @@ class ImageSource(abc.ABC):
         Args:
             signer: The signer used to create the signature value.
             image_name: The image name.
-            endorse: Toggles between signing, and endorsing.
+            signature_type: Specifies what type of signature action to perform.
 
         Returns:
             dict:
@@ -88,7 +88,7 @@ class ImageSource(abc.ABC):
         image_config = data["image_config"]  # type: ImageConfig
 
         # Append our signature to any existing signatures ....
-        signature_value = image_config.sign(signer, endorse)
+        signature_value = image_config.sign(signer, signature_type)
 
         return {
             "image_config": image_config,
@@ -261,7 +261,7 @@ class ImageSource(abc.ABC):
         src_image_name: ImageName,
         dest_image_source,
         dest_image_name: ImageName,
-        endorse: bool,
+        signature_type: SignatureTypes = SignatureTypes.SIGN,
     ):
         """
         Retrieves, verifies and signs the image, storing it in the destination image source.
@@ -271,7 +271,7 @@ class ImageSource(abc.ABC):
             src_image_name: The source image name.
             dest_image_source: The destination image source into which to store the signed image.
             dest_image_name: The description image name.
-            endorse: Toggles between signing, and endorsing.
+            signature_type: Specifies what type of signature action to perform.
 
         Returns:
             dict: as defined by :func:~docker_sign_verify.ImageSource._sign_image_config.
@@ -489,16 +489,20 @@ class ArchiveImageSource(ImageSource):
         src_image_name: ImageName,
         dest_image_source: ImageSource,
         dest_image_name: ImageName,
-        endorse: bool,
+        signature_type: SignatureTypes = SignatureTypes.SIGN,
     ):
         LOGGER.debug(
             "%s: %s ...",
-            "Endorsing" if endorse else "Signing",
+            "Endorsing"
+            if signature_type == SignatureTypes.ENDORSE
+            else "Signing"
+            if signature_type == SignatureTypes.SIGN
+            else "Resigning",
             src_image_name.resolve_name(),
         )
 
         # Generate a signed image configuration ...
-        data = self._sign_image_config(signer, src_image_name, endorse)
+        data = self._sign_image_config(signer, src_image_name, signature_type)
         manifest = data["verify_image_data"]["manifest"]
         LOGGER.debug("    Signature:\n%s", data["signature_value"])
         image_config = data["image_config"]
@@ -588,7 +592,13 @@ class RegistryV2ImageSource(ImageSource):
         "{0}?service={1}&scope={2}&client_id=docker-sign-verify"
     )
     MANIFEST_MIME_TYPE = "application/vnd.docker.distribution.manifest.v2+json"
+    MANIFEST_LIST_MIME_TYPE = (
+        "application/vnd.docker.distribution.manifest.list.v2+json"
+    )
     MANIFEST_URL_PATTERN = "https://{0}/v2/{1}/manifests/{2}"
+
+    PLATFORM_ARCHITECTURE = os.environ.get("DSV_ARCHITECTURE", "amd64")
+    PLATFORM_OS = os.environ.get("DSV_OPERATING_SYSTEM", "linux")
 
     DEFAULT_CREDENTIALS_STORE = Path.home().joinpath(".docker/config.json")
 
@@ -838,6 +848,30 @@ class RegistryV2ImageSource(ImageSource):
         response.raise_for_status()
         return response.content
 
+    def get_manifest_list(self, image_name: ImageName = None) -> Manifest:
+        """
+        Retrieves the manifest list for a given image.
+
+        Args:
+            image_name: The name image for which to retrieve the manifest list .
+
+        Returns:
+            The json representation of the manifest list.
+        """
+        headers = self._get_request_headers(
+            image_name, {"Accept": RegistryV2ImageSource.MANIFEST_LIST_MIME_TYPE}
+        )
+        url = RegistryV2ImageSource.MANIFEST_URL_PATTERN.format(
+            image_name.resolve_endpoint(),
+            image_name.resolve_image(),
+            image_name.resolve_tag(),
+        )
+
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+
+        return json.loads(response.content)
+
     # ImageSource Members
 
     def get_image_config(self, image_name: ImageName) -> ImageConfig:
@@ -880,9 +914,28 @@ class RegistryV2ImageSource(ImageSource):
             image_name.resolve_tag(),
         )
 
+        raw_registry_manifest = None
         response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        raw_registry_manifest = response.content
+        if response.status_code == 404:
+            LOGGER.debug(
+                "Manifest not found; attempting manifest list (arch=%s, os=%s)...",
+                RegistryV2ImageSource.PLATFORM_ARCHITECTURE,
+                RegistryV2ImageSource.PLATFORM_OS,
+            )
+            manifest_list = self.get_manifest_list(image_name)
+            for manifest in manifest_list["manifests"]:
+                platform = manifest["platform"]
+                if (
+                    platform.get("architecture", "")
+                    == RegistryV2ImageSource.PLATFORM_ARCHITECTURE
+                    and platform.get("os", "") == RegistryV2ImageSource.PLATFORM_OS
+                ):
+                    raw_registry_manifest = self.get_image_layer(
+                        image_name, manifest["digest"]
+                    )
+                    break
+        else:
+            raw_registry_manifest = response.content
 
         return RegistryV2Manifest(raw_registry_manifest)
 
@@ -1002,16 +1055,20 @@ class RegistryV2ImageSource(ImageSource):
         src_image_name: ImageName,
         dest_image_source: ImageSource,
         dest_image_name: ImageName,
-        endorse: bool,
+        signature_type: SignatureTypes = SignatureTypes.SIGN,
     ):
         LOGGER.debug(
             "%s: %s ...",
-            "Endorsing" if endorse else "Signing",
+            "Endorsing"
+            if signature_type == SignatureTypes.ENDORSE
+            else "Signing"
+            if signature_type == SignatureTypes.SIGN
+            else "Resigning",
             src_image_name.resolve_name(),
         )
 
         # Generate a signed image configuration ...
-        data = self._sign_image_config(signer, src_image_name, endorse)
+        data = self._sign_image_config(signer, src_image_name, signature_type)
         LOGGER.debug("    Signature:\n%s", data["signature_value"])
         image_config = data["image_config"]
         config_digest = image_config.get_config_digest()
@@ -1246,16 +1303,20 @@ class DeviceMapperRepositoryImageSource(ImageSource):
         src_image_name: ImageName,
         dest_image_source: ImageSource,
         dest_image_name: ImageName,
-        endorse: bool,
+        signature_type: SignatureTypes = SignatureTypes.SIGN,
     ):
         LOGGER.debug(
             "%s: %s ...",
-            "Endorsing" if endorse else "Signing",
+            "Endorsing"
+            if signature_type == SignatureTypes.ENDORSE
+            else "Signing"
+            if signature_type == SignatureTypes.SIGN
+            else "Resigning",
             src_image_name.resolve_name(),
         )
 
         # Generate a signed image configuration ...
-        data = self._sign_image_config(signer, src_image_name, endorse)
+        data = self._sign_image_config(signer, src_image_name, signature_type)
         manifest = data["verify_image_data"]["manifest"]
         LOGGER.debug("    Signature:\n%s", data["signature_value"])
         image_config = data["image_config"]
