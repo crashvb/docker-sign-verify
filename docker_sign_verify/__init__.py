@@ -11,7 +11,7 @@ from .manifests import (
     RegistryV2Manifest,
 )
 from .signers import GPGSigner, PKISigner, Signer
-from .imageconfig import ImageConfig
+from .imageconfig import ImageConfig, SignatureTypes
 from .imagename import ImageName
 from .imagesources import (
     ArchiveImageSource,

@@ -13,6 +13,7 @@ from docker_sign_verify import (
     DeviceMapperRepositoryImageSource,
     ImageName,
     RegistryV2ImageSource,
+    SignatureTypes,
 )
 
 from .common import logging_options, set_log_levels, version
@@ -82,7 +83,7 @@ def sign(context):
         context.obj["src_image_name"],
         context.obj["imagesource"],
         context.obj["dest_image_name"],
-        context.obj["endorse"],
+        SignatureTypes[context.obj["signature_type"].upper()],
     )
     if context.obj["dry_run"]:
         LOGGER.info(
@@ -105,18 +106,19 @@ def sign(context):
     "--dry-run", help="Do not write to destination image sources.", is_flag=True
 )
 @click.option(
-    "-e",
-    "--endorse",
-    help="Endorse (countersign) the source image, instead of (co)-signing.",
-    is_flag=True,
+    "-s",
+    "--signature-type",
+    help="(Co-)sign (default), endorse / countersign, or resign the source image",
+    default="sign",
+    type=click.Choice(["sign", "endorse", "resign"], case_sensitive=False),
 )
 @logging_options
 @click.pass_context
-def cli(context, dry_run: False, endorse: False, verbosity: int = 2):
+def cli(context, dry_run: False, signature_type: "sign", verbosity: int = 2):
     """Creates and embeds signatures into docker images."""
 
     set_log_levels(verbosity)
-    context.obj = {"dry_run": dry_run, "endorse": endorse}
+    context.obj = {"dry_run": dry_run, "signature_type": signature_type}
 
 
 @cli.command()

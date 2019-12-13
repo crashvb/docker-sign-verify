@@ -46,28 +46,36 @@ def set_log_levels(verbosity):
     Args:
         verbosity: The logging verbosity level from  0 (least verbose) to 4 (most verbose).
     """
-    levels = {1: logging.WARNING, 2: logging.INFO, 3: logging.DEBUG, 4: logging.NOTSET}
+    levels = {
+        0: logging.FATAL,
+        1: logging.WARNING,
+        2: logging.INFO,
+        3: logging.DEBUG,
+        4: logging.NOTSET,
+    }
 
     if verbosity is None:
         verbosity = 2
 
+    format = None
     if verbosity < 3:
-        logging.basicConfig(
-            stream=sys.stdout, level=levels[verbosity], format="%(message)s"
-        )
+        format = "%(message)s"
         logging.getLogger("gnupg").setLevel(logging.FATAL)
-    else:
-        logging.basicConfig(
-            stream=sys.stdout,
-            level=levels[verbosity],
-            format="%(asctime)s %(levelname)-8s %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-
-    if verbosity == 3:
+    elif verbosity == 3:
+        format = "%(asctime)s %(levelname)-8s %(message)s"
         logging.getLogger("gnupg").setLevel(logging.WARNING)
         logging.getLogger("requests").setLevel(logging.WARNING)
         logging.getLogger("urllib3").setLevel(logging.WARNING)
+    else:
+        # format = "%(asctime)s.%(msecs)d %(levelname)-8s [%(name)s.%(funcName)s:%(lineno)d]  %(message)s"
+        format = "%(asctime)s.%(msecs)d %(levelname)-8s %(name)s %(message)s"
+
+    logging.basicConfig(
+        stream=sys.stdout,
+        level=levels[verbosity],
+        format=format,
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
 
 
 @click.command()

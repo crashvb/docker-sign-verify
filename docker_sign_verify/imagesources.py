@@ -30,7 +30,7 @@ from .manifests import (
     Manifest,
     RegistryV2Manifest,
 )
-from .imageconfig import ImageConfig
+from .imageconfig import ImageConfig, SignatureTypes
 from .imagename import ImageName
 from .signers import Signer
 from .utils import (
@@ -67,7 +67,7 @@ class ImageSource(abc.ABC):
         self.dry_run = dry_run
 
     def _sign_image_config(
-        self, signer: Signer, image_name: ImageName, endorse: bool
+        self, signer: Signer, image_name: ImageName, signature_type: SignatureTypes
     ) -> Dict:
         """
         Verifies an image, then signs it without storing it in the image source.
@@ -75,7 +75,7 @@ class ImageSource(abc.ABC):
         Args:
             signer: The signer used to create the signature value.
             image_name: The image name.
-            endorse: Toggles between signing, and endorsing.
+            signature_type: Specifies what type of signature action to perform.
 
         Returns:
             dict:
@@ -88,7 +88,7 @@ class ImageSource(abc.ABC):
         image_config = data["image_config"]  # type: ImageConfig
 
         # Append our signature to any existing signatures ....
-        signature_value = image_config.sign(signer, endorse)
+        signature_value = image_config.sign(signer, signature_type)
 
         return {
             "image_config": image_config,
@@ -261,7 +261,7 @@ class ImageSource(abc.ABC):
         src_image_name: ImageName,
         dest_image_source,
         dest_image_name: ImageName,
-        endorse: bool,
+        signature_type: SignatureTypes = SignatureTypes.SIGN,
     ):
         """
         Retrieves, verifies and signs the image, storing it in the destination image source.
@@ -271,7 +271,7 @@ class ImageSource(abc.ABC):
             src_image_name: The source image name.
             dest_image_source: The destination image source into which to store the signed image.
             dest_image_name: The description image name.
-            endorse: Toggles between signing, and endorsing.
+            signature_type: Specifies what type of signature action to perform.
 
         Returns:
             dict: as defined by :func:~docker_sign_verify.ImageSource._sign_image_config.
@@ -489,16 +489,20 @@ class ArchiveImageSource(ImageSource):
         src_image_name: ImageName,
         dest_image_source: ImageSource,
         dest_image_name: ImageName,
-        endorse: bool,
+        signature_type: SignatureTypes = SignatureTypes.SIGN,
     ):
         LOGGER.debug(
             "%s: %s ...",
-            "Endorsing" if endorse else "Signing",
+            "Endorsing"
+            if signature_type == SignatureTypes.ENDORSE
+            else "Signing"
+            if signature_type == SignatureTypes.SIGN
+            else "Resigning",
             src_image_name.resolve_name(),
         )
 
         # Generate a signed image configuration ...
-        data = self._sign_image_config(signer, src_image_name, endorse)
+        data = self._sign_image_config(signer, src_image_name, signature_type)
         manifest = data["verify_image_data"]["manifest"]
         LOGGER.debug("    Signature:\n%s", data["signature_value"])
         image_config = data["image_config"]
@@ -1051,16 +1055,20 @@ class RegistryV2ImageSource(ImageSource):
         src_image_name: ImageName,
         dest_image_source: ImageSource,
         dest_image_name: ImageName,
-        endorse: bool,
+        signature_type: SignatureTypes = SignatureTypes.SIGN,
     ):
         LOGGER.debug(
             "%s: %s ...",
-            "Endorsing" if endorse else "Signing",
+            "Endorsing"
+            if signature_type == SignatureTypes.ENDORSE
+            else "Signing"
+            if signature_type == SignatureTypes.SIGN
+            else "Resigning",
             src_image_name.resolve_name(),
         )
 
         # Generate a signed image configuration ...
-        data = self._sign_image_config(signer, src_image_name, endorse)
+        data = self._sign_image_config(signer, src_image_name, signature_type)
         LOGGER.debug("    Signature:\n%s", data["signature_value"])
         image_config = data["image_config"]
         config_digest = image_config.get_config_digest()
@@ -1295,16 +1303,20 @@ class DeviceMapperRepositoryImageSource(ImageSource):
         src_image_name: ImageName,
         dest_image_source: ImageSource,
         dest_image_name: ImageName,
-        endorse: bool,
+        signature_type: SignatureTypes = SignatureTypes.SIGN,
     ):
         LOGGER.debug(
             "%s: %s ...",
-            "Endorsing" if endorse else "Signing",
+            "Endorsing"
+            if signature_type == SignatureTypes.ENDORSE
+            else "Signing"
+            if signature_type == SignatureTypes.SIGN
+            else "Resigning",
             src_image_name.resolve_name(),
         )
 
         # Generate a signed image configuration ...
-        data = self._sign_image_config(signer, src_image_name, endorse)
+        data = self._sign_image_config(signer, src_image_name, signature_type)
         manifest = data["verify_image_data"]["manifest"]
         LOGGER.debug("    Signature:\n%s", data["signature_value"])
         image_config = data["image_config"]
