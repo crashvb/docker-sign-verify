@@ -57,7 +57,12 @@ def set_log_levels(verbosity):
         )
         logging.getLogger("gnupg").setLevel(logging.FATAL)
     else:
-        logging.basicConfig(stream=sys.stdout, level=levels[verbosity])
+        logging.basicConfig(
+            stream=sys.stdout,
+            level=levels[verbosity],
+            format="%(asctime)s %(levelname)-8s %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
 
     if verbosity == 3:
         logging.getLogger("gnupg").setLevel(logging.WARNING)

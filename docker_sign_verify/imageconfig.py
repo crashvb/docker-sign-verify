@@ -162,7 +162,18 @@ class ImageConfig:
         Returns:
             The listing of image layer identifiers.
         """
-        diff_ids = self.config_json["rootfs"]["diff_ids"]
+        # Note: We need to handle both key cases, as Microsoft does not conform to the standard.
+        try:
+            rootfs = self.config_json["rootfs"]
+        except KeyError:
+            rootfs = self.config_json["rootfS"]
+
+        if rootfs is None:
+            raise RuntimeError(
+                "Unable to locate rootf[Ss] key within image configuration!"
+            )
+
+        diff_ids = rootfs["diff_ids"]
         return [FormattedSHA256.parse(x) for x in diff_ids]
 
     def clear_signature_list(self):

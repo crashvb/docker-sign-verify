@@ -588,7 +588,13 @@ class RegistryV2ImageSource(ImageSource):
         "{0}?service={1}&scope={2}&client_id=docker-sign-verify"
     )
     MANIFEST_MIME_TYPE = "application/vnd.docker.distribution.manifest.v2+json"
+    MANIFEST_LIST_MIME_TYPE = (
+        "application/vnd.docker.distribution.manifest.list.v2+json"
+    )
     MANIFEST_URL_PATTERN = "https://{0}/v2/{1}/manifests/{2}"
+
+    PLATFORM_ARCHITECTURE = os.environ.get("DSV_ARCHITECTURE", "amd64")
+    PLATFORM_OS = os.environ.get("DSV_OPERATING_SYSTEM", "linux")
 
     DEFAULT_CREDENTIALS_STORE = Path.home().joinpath(".docker/config.json")
 
@@ -838,6 +844,30 @@ class RegistryV2ImageSource(ImageSource):
         response.raise_for_status()
         return response.content
 
+    def get_manifest_list(self, image_name: ImageName = None) -> Manifest:
+        """
+        Retrieves the manifest list for a given image.
+
+        Args:
+            image_name: The name image for which to retrieve the manifest list .
+
+        Returns:
+            The json representation of the manifest list.
+        """
+        headers = self._get_request_headers(
+            image_name, {"Accept": RegistryV2ImageSource.MANIFEST_LIST_MIME_TYPE}
+        )
+        url = RegistryV2ImageSource.MANIFEST_URL_PATTERN.format(
+            image_name.resolve_endpoint(),
+            image_name.resolve_image(),
+            image_name.resolve_tag(),
+        )
+
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+
+        return json.loads(response.content)
+
     # ImageSource Members
 
     def get_image_config(self, image_name: ImageName) -> ImageConfig:
@@ -880,9 +910,28 @@ class RegistryV2ImageSource(ImageSource):
             image_name.resolve_tag(),
         )
 
+        raw_registry_manifest = None
         response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        raw_registry_manifest = response.content
+        if response.status_code == 404:
+            LOGGER.debug(
+                "Manifest not found; attempting manifest list (arch=%s, os=%s)...",
+                RegistryV2ImageSource.PLATFORM_ARCHITECTURE,
+                RegistryV2ImageSource.PLATFORM_OS,
+            )
+            manifest_list = self.get_manifest_list(image_name)
+            for manifest in manifest_list["manifests"]:
+                platform = manifest["platform"]
+                if (
+                    platform.get("architecture", "")
+                    == RegistryV2ImageSource.PLATFORM_ARCHITECTURE
+                    and platform.get("os", "") == RegistryV2ImageSource.PLATFORM_OS
+                ):
+                    raw_registry_manifest = self.get_image_layer(
+                        image_name, manifest["digest"]
+                    )
+                    break
+        else:
+            raw_registry_manifest = response.content
 
         return RegistryV2Manifest(raw_registry_manifest)
 
