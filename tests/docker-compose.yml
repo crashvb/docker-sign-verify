@@ -1,0 +1,13 @@
+#!/usr/bin/env docker-compose
+
+version: "3"
+services:
+  pytest-registry:
+    container_name: pytest-registry
+    environment:
+      #REGISTRY_STORAGE_DELETE_ENABLED: "true"
+      REGISTRY_STORAGE_DELETE: '{"enabled":true}'
+      REGISTRY_LOG_LEVEL_DEBUG: "true"
+    image: library/registry:2.7.1
+    ports:
+    - "5001:5000/tcp"

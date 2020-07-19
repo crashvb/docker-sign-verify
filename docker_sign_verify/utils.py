@@ -5,93 +5,71 @@
 import gzip
 import hashlib
 import io
+import logging
 import os
 import shutil
 import tarfile
 import tempfile
 import time
 
-from typing import Dict
+from pathlib import Path
+from typing import TypedDict
 
-CHUNK_SIZE = int(os.environ.get("DSV_CHUNK_SIZE", 1048576))
+import aiofiles
 
+from docker_registry_client_async import FormattedSHA256
+from docker_registry_client_async.hashinggenerator import HashingGenerator
+from docker_registry_client_async.utils import (
+    async_wrap,
+    be_kind_rewind,
+    CHUNK_SIZE as DRCA_CHUNK_SIZE,
+)
 
-class FormattedSHA256(str):
-    """A algorithm prefixed SHA256 hash value."""
+LOGGER = logging.getLogger(__name__)
 
-    def __new__(cls, sha256: str):
-        if not sha256 or len(sha256) != 64:
-            raise ValueError(sha256)
-        obj = super().__new__(cls, "sha256:{0}".format(sha256))
-        obj.sha256 = sha256
-        return obj
-
-    @staticmethod
-    def parse(digest: str):
-        """
-        Initializes a FormattedSHA256 from a given SHA256 digest value.
-
-        Args:
-            digest: A SHA256 digest value in form SHA256:<digest value>.
-
-        Returns:
-            The newly initialized object.
-        """
-        if not digest or not digest.startswith("sha256:") or len(digest) != 71:
-            raise ValueError(digest)
-        return FormattedSHA256(digest[7:])
+CHUNK_SIZE = int(os.environ.get("DSV_CHUNK_SIZE", DRCA_CHUNK_SIZE))
 
 
-def _chunk_file(file_in, file_out) -> Dict:
+class UtilChunkFile(TypedDict):
+    # pylint: disable=missing-class-docstring
+    digest: FormattedSHA256
+    size: int
+
+
+async def chunk_file(
+    file_in, file_out, *, file_in_is_async: bool = True, file_out_is_async: bool = True
+) -> UtilChunkFile:
     """
-    Copies from one file to another in chunks.
+    Copies chunkcs from one file to another.
 
     Args:
-        file_in: The input file.
-        file_out: The output file.
+        file_in: The file from which to retrieve the file chunks.
+        file_out: The file to which to store the file chunks.
+        file_in_is_async: If True, all file_in IO operations will be awaited.
+        file_out_is_async: If True, all file_out IO operations will be awaited.
 
     Returns:
         dict:
-            digest: The SHA256 digest value of the output file.
-            size: Size of the output file in bytes.
+            digest: The digest value of the chunked data.
+            size: The byte size of the chunked data in bytes.
     """
-    size = 0
+    coroutine_read = file_in.read if file_in_is_async else async_wrap(file_in.read)
+    coroutine_write = (
+        file_out.write if file_out_is_async else async_wrap(file_out.write)
+    )
     hasher = hashlib.sha256()
+    size = 0
     while True:
-        chunk = file_in.read(CHUNK_SIZE)
+        chunk = await coroutine_read(CHUNK_SIZE)
         if not chunk:
             break
-        file_out.write(chunk)
-        size += len(chunk)
+        await coroutine_write(chunk)
         hasher.update(chunk)
-    file_out.flush()
+        size += len(chunk)
 
-    # Not all file object are native ...
-    try:
-        os.fsync(file_out.fileno())
-    # pylint: disable=bare-except
-    except:
-        ...
+    await be_kind_rewind(file_out, file_is_async=file_out_is_async)
 
-    # Be kind, rewind ...
-    file_out.seek(0)
-
-    return {"digest": "sha256:{0}".format(hasher.hexdigest()), "size": size}
-
-
-def must_be_equal(
-    expected, actual, msg: str = "Actual value does not match expected value"
-):
-    """
-    Compares two values and raises an exception if they are not equal.
-
-    Args:
-        expected: The expected value.
-        actual: The actual value.
-        msg: Message describing the context of the comparison.
-    """
-    if actual != expected:
-        raise RuntimeError("{0}: {1} != {2}".format(msg, actual, expected))
+    return {"digest": FormattedSHA256(hasher.hexdigest()), "size": size}
 
 
 def xellipsis(string: str) -> str:
@@ -126,36 +104,9 @@ def str_ellipsis(string: str, max_length: int = 40) -> str:
     return "{0}...{1}".format(string[: int(n_1)], string[-int(n_2) :])
 
 
-def formatted_digest(data: bytes) -> FormattedSHA256:
+async def read_file(path: Path) -> bytes:
     """
-    Returns the algorithm prefixed digest value of given data.
-
-    Args:
-        data: The data for which to calculate the digest value.
-
-    Returns:
-        The digest value of the data in the format <hast type>:<digest value>.
-    """
-    return FormattedSHA256(hashlib.sha256(data).hexdigest())
-
-
-def copy_file(file_in, file_out) -> Dict:
-    """
-    Copies from one file to another.
-
-    Args:
-        file_in: The input file.
-        file_out: The output file.
-
-    Returns:
-        dict: as defined by :func:~docker_sign_verify.Utils._chunk_file.
-    """
-    return _chunk_file(file_in, file_out)
-
-
-def read_file(path) -> bytes:
-    """
-    Retrieves the entire contents of a file.
+    Generator that asynchronously reads from a given file.
 
     Args:
         path: Absolute path of the file to be read.
@@ -163,28 +114,25 @@ def read_file(path) -> bytes:
     Returns:
         The file content.
     """
-    bytesio = io.BytesIO()
-    with path.open(mode="rb") as file:
-        copy_file(file, bytesio)
-    return bytesio.read()
+    async with aiofiles.open(path, mode="r+b") as file:
+        return bytes(HashingGenerator(file))
 
 
-def write_file(path, content: bytes) -> Dict:
+async def write_file(path: Path, content: bytes):
     """
     Assigns the entire contents of a file.
 
     Args:
         path: Absolute path of the file to be assigned.
         content: The content to be assigned.
-
-    Returns:
-        dict: as defined by :func:~docker_sign_verify.Utils.copy_file.
     """
-    bytesio = io.BytesIO(content)
-    with path.open(mode="wb") as file:
-        return copy_file(bytesio, file)
+    async with aiofiles.open(path, mode="w+b") as file:
+        # TODO: Split content into chunks ...
+        # TODO: Should we digest here?
+        await file.write(content)
 
 
+# TODO: Convert to aysnc
 def tar_mkdir(file_out, name: str):
     """
     Creates an empty directory in a given tar archive on disk.
@@ -206,6 +154,7 @@ def tar_mkdir(file_out, name: str):
 
 
 # TODO: What is the type of "content"?
+# TODO: Convert to aysnc
 def tar_add_file(file_out, name: str, content):
     """
     Creates a file from memory in a given tar archive on disk.
@@ -229,6 +178,7 @@ def tar_add_file(file_out, name: str, content):
         tfile_out.addfile(tarinfo, bytesio)
 
 
+# TODO: Convert to aysnc
 def tar_delete_file(file_out, name: str):
     """
     Removes a file from a given tar archive on disk.
@@ -254,6 +204,7 @@ def tar_delete_file(file_out, name: str):
         shutil.copyfileobj(tmp, file_out)
 
 
+# TODO: Convert to aysnc
 def tar(file_out, name: str, file_in):
     """
     Adds a file to a given tar archive on disk to disk.
@@ -271,7 +222,9 @@ def tar(file_out, name: str, file_in):
         tfile_out.addfile(tarinfo, file_in)
 
 
-def untar(file_in, name: str, file_out):
+async def untar(
+    file_in, name: str, file_out, *, file_out_is_async: bool = True
+) -> UtilChunkFile:
     """
     Extracts a file from a given tar archive.
 
@@ -279,16 +232,22 @@ def untar(file_in, name: str, file_out):
         file_in: The input file (tar).
         name: The name of the file to be extracted.
         file_out: The output file.
+        file_out_is_async: If True, all file_out IO operations will be awaited.
     """
     result = None
     with tarfile.open(fileobj=file_in) as tfile_in:
         for tarinfo in tfile_in:
             if tarinfo.name == name:
-                result = _chunk_file(tfile_in.extractfile(tarinfo), file_out)
+                result = await chunk_file(
+                    tfile_in.extractfile(tarinfo),
+                    file_out,
+                    file_in_is_async=file_out_is_async,
+                )
                 break
     return result
 
 
+# TODO: Convert to aysnc
 def file_exists_in_tar(file_in, name: str):
     """
     Checks if a file exists in a given tar archive.
@@ -307,16 +266,17 @@ def file_exists_in_tar(file_in, name: str):
     return False
 
 
-def gunzip(file_in, file_out) -> Dict:
+async def gunzip(path: Path, file_out) -> UtilChunkFile:
     """
     Uncompresses a given gzip archive.
 
     Args:
-        file_in: The input file (gz)
+        path: Path to the gzipped file.
         file_out: The output file.
 
     Returns:
         dict: as defined by :func:~docker_sign_verify.Utils._chunk_file.
     """
-    with gzip.GzipFile(fileobj=file_in, mode="rb") as gfile_in:
-        return _chunk_file(gfile_in, file_out)
+    # TODO: Implement an async GzipFile ...
+    with gzip.GzipFile(filename=path, mode="rb") as file_in:
+        return await chunk_file(file_in, file_out, file_in_is_async=False)

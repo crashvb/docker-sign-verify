@@ -3,25 +3,46 @@
 """Docker verify command line interface."""
 
 import logging
+import sys
 
-from typing import List
+from traceback import print_exception
+from typing import List, TypedDict
 
 import click
-import urllib3
 
+from click.core import Context
+from docker_registry_client_async import ImageName
 from docker_sign_verify import (
     ArchiveImageSource,
     DeviceMapperRepositoryImageSource,
+    ImageSource,
     RegistryV2ImageSource,
 )
+from docker_sign_verify.imagesource import ImageSourceVerifyImageSignatures
 
-from .common import logging_options, set_log_levels, version
+from .common import (
+    async_command,
+    LOGGING_DEFAULT,
+    logging_options,
+    set_log_levels,
+    version,
+)
 from .utils import to_image_name
 
 LOGGER = logging.getLogger(__name__)
 
-# Bug Fix: There isn't anything we can do about mis-configured remote certificates ...
-urllib3.disable_warnings(urllib3.exceptions.SecurityWarning)
+
+class TypingContextObject(TypedDict):
+    # pylint: disable=missing-class-docstring
+    check_signatures: bool
+    verbosity: int
+    images: List[ImageName]
+    imagesource: ImageSource
+
+
+def get_context_object(context: Context) -> TypingContextObject:
+    """Wrapper method to enforce type checking."""
+    return context.obj
 
 
 def verify_options(function):
@@ -33,28 +54,51 @@ def verify_options(function):
     return function
 
 
-def verify(context):
+async def _verify(ctx: TypingContextObject) -> List[ImageSourceVerifyImageSignatures]:
     """Verifies an image(s)."""
 
     results = []
-    for image_name in context.obj["images"]:
-        if context.obj["check_signatures"]:
-            result = context.obj["imagesource"].verify_image_signatures(image_name)
+
+    for image_name in ctx["images"]:
+        if ctx["check_signatures"]:
+            result = await ctx["imagesource"].verify_image_signatures(image_name)
             LOGGER.info(
-                "Image %s (%s) is consistent.",
+                "Image %s (%s) is consistent; %d signature(s) verified.",
                 image_name.resolve_name(),
-                result["image_config"].get_config_digest(),
+                result["image_config"].get_digest(),
+                len(result["signatures"]["signatures"]),
             )
-            LOGGER.info("Image %s signature(s) verified.", len(result["signatures"]))
         else:
-            result = context.obj["imagesource"].verify_image_integrity(image_name)
+            result = await ctx["imagesource"].verify_image_integrity(image_name)
             LOGGER.info(
                 "Image %s (%s) is consistent.",
                 image_name.resolve_name(),
-                result["image_config"].get_config_digest(),
+                result["image_config"].get_digest(),
             )
-            LOGGER.info("Image signature(s) not verified.")
+            LOGGER.info("Image signature(s) NOT verified.")
         results.append(result)
+
+    return results
+
+
+@async_command
+async def verify(context: Context) -> List[ImageSourceVerifyImageSignatures]:
+    """Verifies an image(s)."""
+
+    results = []
+
+    ctx = get_context_object(context)
+    try:
+        results = await _verify(ctx)
+    except Exception as exception:  # pylint: disable=broad-except
+        if ctx["verbosity"] > 0:
+            logging.fatal(exception)
+        if ctx["verbosity"] > LOGGING_DEFAULT:
+            exc_info = sys.exc_info()
+            print_exception(*exc_info)
+        sys.exit(1)
+    finally:
+        await ctx["imagesource"].close()
 
     return results
 
@@ -68,11 +112,14 @@ def verify(context):
 )
 @logging_options
 @click.pass_context
-def cli(context, check_signatures: bool, verbosity: int = 2):
+def cli(context: Context, check_signatures: bool, verbosity: int = LOGGING_DEFAULT):
     """Verifies embedded signatures, and the integrity of docker image layers and metadata."""
 
+    if verbosity is None:
+        verbosity = LOGGING_DEFAULT
+
     set_log_levels(verbosity)
-    context.obj = {"check_signatures": check_signatures}
+    context.obj = {"check_signatures": check_signatures, "verbosity": verbosity}
 
 
 @cli.command()
@@ -86,33 +133,36 @@ def cli(context, check_signatures: bool, verbosity: int = 2):
 @verify_options
 @click.pass_context
 # pylint: disable=redefined-outer-name
-def archive(context, images: List, archive: str):
+def archive(context: Context, images: List[ImageName], archive: str):
     """Operates on docker-save produced archives."""
 
-    context.obj["images"] = images
-    context.obj["imagesource"] = ArchiveImageSource(archive=archive)
+    ctx = get_context_object(context)
+    ctx["images"] = images
+    ctx["imagesource"] = ArchiveImageSource(archive=archive)
     verify(context)
 
 
 @cli.command()
 @verify_options
 @click.pass_context
-def registry(context, images: List):
+def registry(context: Context, images: List[ImageName]):
     """Operates on docker registries (v2)."""
 
-    context.obj["images"] = images
-    context.obj["imagesource"] = RegistryV2ImageSource()
+    ctx = get_context_object(context)
+    ctx["images"] = images
+    ctx["imagesource"] = RegistryV2ImageSource()
     verify(context)
 
 
 @cli.command()
 @verify_options
 @click.pass_context
-def repository(context, images: List):
+def repository(context: Context, images: List[ImageName]):
     """Operates on docker repositories."""
 
-    context.obj["images"] = images
-    context.obj["imagesource"] = DeviceMapperRepositoryImageSource()
+    ctx = get_context_object(context)
+    ctx["images"] = images
+    ctx["imagesource"] = DeviceMapperRepositoryImageSource()
     verify(context)
 
 

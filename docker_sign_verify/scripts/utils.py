@@ -3,7 +3,7 @@
 """Utility classes."""
 
 
-from docker_sign_verify import ImageName
+from docker_registry_client_async import ImageName
 
 
 # pylint: disable=unused-argument

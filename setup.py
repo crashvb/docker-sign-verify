@@ -34,15 +34,28 @@ setup(
         docker-sign=docker_sign_verify.scripts.docker_sign:cli
         docker-verify=docker_sign_verify.scripts.docker_verify:cli
     """,
-    extras_require={"dev": ["black", "pylint", "pytest", "twine", "wheel"]},
+    extras_require={
+        "dev": [
+            "black",
+            "docker",
+            "docker-compose",
+            "lovely-pytest-docker",
+            "pylint",
+            "pytest",
+            "pytest-asyncio",
+            "twine",
+            "wheel",
+        ]
+    },
     include_package_data=True,
     install_requires=[
+        "aiofiles",
+        "aiohttp",
         "canonicaljson",
+        "docker-registry-client-async>=0.1.0",
         "click",
         "gnupg",
         "pycryptodome",
-        "requests",
-        "www_authenticate",
     ],
     keywords="docker docker-sign docker-verify integrity sign signatures verify",
     license="Apache License 2.0",
@@ -51,7 +64,13 @@ setup(
     name="docker_sign_verify",
     packages=find_packages(),
     setup_requires=["pytest-runner"],
-    tests_require=["pytest"],
+    tests_require=[
+        "docker",
+        "docker-compose",
+        "lovely-pytest-docker",
+        "pytest",
+        "pytest-asyncio",
+    ],
     test_suite="tests",
     url="https://pypi.org/project/docker-sign-verify/",
     version=find_version("docker_sign_verify", "__init__.py"),
