@@ -3,25 +3,51 @@
 """Docker copy command line interface."""
 
 import logging
+import sys
+
+from traceback import print_exception
+from typing import cast, TypedDict
 
 import click
-import urllib3
 
+from click.core import Context
+from docker_registry_client_async import ImageName
 from docker_sign_verify import (
     ArchiveImageSource,
     DeviceMapperRepositoryImageSource,
-    ImageName,
+    ImageSource,
     RegistryV2ImageSource,
 )
 
-from .common import logging_options, set_log_levels, version
-from .docker_verify import verify
+from .common import (
+    async_command,
+    LOGGING_DEFAULT,
+    logging_options,
+    set_log_levels,
+    version,
+)
+from .docker_verify import (
+    _verify,
+    TypingContextObject as DockerVerifyTypingContextObject,
+)
 from .utils import to_image_name
 
 LOGGER = logging.getLogger(__name__)
 
-# Bug Fix: There isn't anything we can do about mis-configured remote certificates ...
-urllib3.disable_warnings(urllib3.exceptions.SecurityWarning)
+
+class TypingContextObject(TypedDict):
+    # pylint: disable=missing-class-docstring
+    check_signatures: bool
+    dry_run: bool
+    verbosity: int
+    src_image_name: ImageName
+    dest_image_name: ImageName
+    imagesource: ImageSource
+
+
+def get_context_object(context: Context) -> TypingContextObject:
+    """Wrapper method to enforce type checking."""
+    return context.obj
 
 
 def copy_options(function):
@@ -37,31 +63,46 @@ def copy_options(function):
     return function
 
 
-def copy(context):
+@async_command
+async def copy(context: Context):
     """Copies and image."""
-    context.obj["images"] = [context.obj["src_image_name"]]
-    result = verify(context)[0]
 
-    context.obj["imagesource"].put_image(
-        context.obj["imagesource"],
-        context.obj["dest_image_name"],
-        result["manifest"],
-        result["image_config"],
-        # TODO: Select compressed_layer_files vs uncompressed_layer_files based on type(imagesource).
-        result["compressed_layer_files"],
-    )
-    if context.obj["dry_run"]:
-        LOGGER.info(
-            "Dry run completed for image: %s (%s)",
-            context.obj["dest_image_name"].resolve_name(),
-            result["image_config"].get_config_digest(),
+    ctx = get_context_object(context)
+    try:
+        ctx_verify = cast(DockerVerifyTypingContextObject, ctx)
+        ctx_verify["images"] = [ctx["src_image_name"]]
+        result = await _verify(ctx)
+        result = result[0]
+
+        await ctx["imagesource"].put_image(
+            ctx["imagesource"],
+            ctx["dest_image_name"],
+            result["manifest"],
+            result["image_config"],
+            # TODO: Select compressed_layer_files vs uncompressed_layer_files based on type(imagesource).
+            result["compressed_layer_files"],
         )
-    else:
-        LOGGER.info(
-            "Created new image: %s (%s)",
-            context.obj["dest_image_name"].resolve_name(),
-            result["image_config"].get_config_digest(),
-        )
+        if ctx["dry_run"]:
+            LOGGER.info(
+                "Dry run completed for image: %s (%s)",
+                ctx["dest_image_name"].resolve_name(),
+                result["image_config"].get_digest(),
+            )
+        else:
+            LOGGER.info(
+                "Replicated new image: %s (%s)",
+                ctx["dest_image_name"].resolve_name(),
+                result["image_config"].get_digest(),
+            )
+    except Exception as exception:  # pylint: disable=broad-except
+        if ctx["verbosity"] > 0:
+            logging.fatal(exception)
+        if ctx["verbosity"] > LOGGING_DEFAULT:
+            exc_info = sys.exc_info()
+            print_exception(*exc_info)
+        sys.exit(1)
+    finally:
+        await ctx["imagesource"].close()
 
 
 @click.group()
@@ -76,14 +117,24 @@ def copy(context):
 )
 @logging_options
 @click.pass_context
-def cli(context, check_signatures: bool, dry_run: False, verbosity: int = 2):
-    """
-    Replicates docker images while verifying embedded signatures, and the integrity of docker image layers and metadata.
-    """
+def cli(
+    context: Context,
+    check_signatures: bool,
+    dry_run: False,
+    verbosity: int = LOGGING_DEFAULT,
+):
+    """Replicates docker images while verifying embedded signatures, and the integrity of docker image layers and metadata."""
+
+    if verbosity is None:
+        verbosity = LOGGING_DEFAULT
 
     set_log_levels(verbosity)
 
-    context.obj = {"check_signatures": check_signatures, "dry_run": dry_run}
+    context.obj = {
+        "check_signatures": check_signatures,
+        "dry_run": dry_run,
+        "verbosity": verbosity,
+    }
 
 
 @cli.command()
@@ -98,41 +149,43 @@ def cli(context, check_signatures: bool, dry_run: False, verbosity: int = 2):
 @click.pass_context
 # pylint: disable=redefined-outer-name
 def archive(
-    context, src_image_name: ImageName, dest_image_name: ImageName, archive: str
+    context: Context,
+    src_image_name: ImageName,
+    dest_image_name: ImageName,
+    archive: str,
 ):
     """Operates on docker-save produced archives."""
 
-    context.obj["src_image_name"] = src_image_name
-    context.obj["dest_image_name"] = dest_image_name
-    context.obj["imagesource"] = ArchiveImageSource(
-        archive=archive, dry_run=context.obj["dry_run"]
-    )
+    ctx = get_context_object(context)
+    ctx["src_image_name"] = src_image_name
+    ctx["dest_image_name"] = dest_image_name
+    ctx["imagesource"] = ArchiveImageSource(archive=archive, dry_run=ctx["dry_run"])
     copy(context)
 
 
 @cli.command()
 @copy_options
 @click.pass_context
-def registry(context, src_image_name: ImageName, dest_image_name: ImageName):
+def registry(context: Context, src_image_name: ImageName, dest_image_name: ImageName):
     """Operates on docker registries (v2)."""
 
-    context.obj["src_image_name"] = src_image_name
-    context.obj["dest_image_name"] = dest_image_name
-    context.obj["imagesource"] = RegistryV2ImageSource(dry_run=context.obj["dry_run"])
+    ctx = get_context_object(context)
+    ctx["src_image_name"] = src_image_name
+    ctx["dest_image_name"] = dest_image_name
+    ctx["imagesource"] = RegistryV2ImageSource(dry_run=ctx["dry_run"])
     copy(context)
 
 
 @cli.command()
 @copy_options
 @click.pass_context
-def repository(context, src_image_name: ImageName, dest_image_name: ImageName):
+def repository(context: Context, src_image_name: ImageName, dest_image_name: ImageName):
     """Operates on docker repositories."""
 
-    context.obj["src_image_name"] = src_image_name
-    context.obj["dest_image_name"] = dest_image_name
-    context.obj["imagesource"] = DeviceMapperRepositoryImageSource(
-        dry_run=context.obj["dry_run"]
-    )
+    ctx = get_context_object(context)
+    ctx["src_image_name"] = src_image_name
+    ctx["dest_image_name"] = dest_image_name
+    ctx["imagesource"] = DeviceMapperRepositoryImageSource(dry_run=ctx["dry_run"])
     copy(context)
 
 

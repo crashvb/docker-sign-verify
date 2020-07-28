@@ -23,6 +23,12 @@ verify:
 test:
 	python -m pytest --log-cli-level info $(args)
 
+test_all:
+	python -m pytest --log-cli-level info --allow-online-modification $(args)
+
+test_all_verbose:
+	python -m pytest -r sx --log-cli-level debug --allow-online-modification $(args)
+
 test_code:
 	# Note: https://github.com/PyCQA/pylint/issues/289
 	python -m pylint --disable C0330,R0801 --max-line-length=120 docker_sign_verify tests

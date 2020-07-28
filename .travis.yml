@@ -1,10 +1,11 @@
-language: python
-python:
-- "3.7"
-- "pypy3"
+env:
+- TRAVIS=true
 install:
 - python -m pip install --upgrade pip
 - python -m pip install --editable .[dev]
+language: python
+python:
+- "3.8.3"
 script:
 # TODO: Figure out anonymous bind credentials for dockerhub API and change to "args=--allow-online make test"
 - make test

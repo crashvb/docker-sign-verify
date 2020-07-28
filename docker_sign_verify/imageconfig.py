@@ -7,32 +7,41 @@ https://github.com/moby/moby/blob/master/image/spec/v1.md
 (eventually, https://github.com/opencontainers/image-spec/blob/master/config.md)
 """
 
-import copy
 import json
 import logging
 
-from enum import Enum
-from typing import Dict, List
+from copy import deepcopy
+from typing import Any, Dict, List, TypedDict
 
 import canonicaljson
 
-from .signers import Signer
-from .utils import formatted_digest, must_be_equal, FormattedSHA256
+from docker_registry_client_async import FormattedSHA256, JsonBytes
+from docker_registry_client_async.utils import must_be_equal
+
+from .exceptions import (
+    DigestMismatchError,
+    MalformedConfigurationError,
+    NoSignatureError,
+)
+from .signer import Signer
+from .specs import SignatureTypes
 
 LOGGER = logging.getLogger(__name__)
 
 
-class SignatureTypes(Enum):
-    """
-    Docker signature types.
-    """
-
-    SIGN = 0  # Append (Co-)signature
-    ENDORSE = 1  # Append endorsement
-    RESIGN = 2  # Replace signature(s)
+class ImageConfigSignatureEntry(TypedDict):
+    # pylint: disable=missing-class-docstring
+    digest: FormattedSHA256
+    signature: str
 
 
-class ImageConfig:
+class ImageConfigVerifySignatures(TypedDict):
+    # pylint: disable=missing-class-docstring
+    signatures: List[ImageConfigSignatureEntry]
+    results: List[Any]
+
+
+class ImageConfig(JsonBytes):
     """
     Docker image configuration.
     """
@@ -44,18 +53,15 @@ class ImageConfig:
     DEFAULT_SIGNATURES_VALUE = "[]"
 
     def __init__(self, config: bytes):
+        # pylint: disable=useless-super-delegation
         """
         Args:
             config: The raw image configuration.
         """
-        self.config = self.config_json = None
-        self._set_config(config)
-
-    def __str__(self):
-        return self.get_config().decode("utf-8")
+        super().__init__(config)
 
     @staticmethod
-    def _get_labels(config_json) -> Dict:
+    def _get_labels(config_json) -> Dict[str, str]:
         """
         Retrieves the "Labels" dictionary from the given image configuration.
 
@@ -63,7 +69,7 @@ class ImageConfig:
             config_json: The image configuration from which to retrieve the dictionary.
 
         Returns:
-            Dict: The corresponding dictionary, or an empty dictionary if NoneType.
+            dict: The corresponding dictionary, or an empty dictionary if NoneType.
         """
 
         # Note: We need to handle both key cases, as Red Hat does not conform to the standard.
@@ -73,8 +79,9 @@ class ImageConfig:
             config = config_json["config"]
 
         if config is None:
-            raise RuntimeError(
-                "Unable to locate [Cc]onfig key within image configuration!"
+            raise MalformedConfigurationError(
+                "Unable to locate [Cc]onfig key within image configuration!",
+                config=config_json,
             )
 
         try:
@@ -107,66 +114,26 @@ class ImageConfig:
 
         return config_json
 
-    def _set_config(self, config: bytes):
-        """
-        Assigns the raw image configuration and updates the internal JSON object.
-
-        Args:
-            config: The raw image configuration.
-        """
-        self.config = config
-        # Note: Do not normalize here, or integrity verification of unsigned images will fail.
-        self.config_json = json.loads(self.config)
-
-    def _set_config_json(self, config_json):
-        """
-        Assigns the internal JSON object and updates the raw image configuration.
-
-        Args:
-            config_json: The internal JSON object.
-        """
-        self.config_json = config_json
-        self.config = json.dumps(self.config_json).encode("utf-8")
-
-    def get_config(self) -> bytes:
-        """
-        Retrieves the raw image configuration.
-
-        Returns:
-            The raw image configuration.
-        """
-        return self.config
-
-    def get_config_canonical(self):
+    def get_bytes_canonical(self) -> bytes:
         """
         Retrieves the image configuration in canonical JSON form.
 
         Returns:
             The image configuration in canonical JSON form.
         """
-        config_json = copy.deepcopy(self.config_json)
-        config_json = ImageConfig._normalize(config_json)
+        config_json = ImageConfig._normalize(self.get_json())
         return canonicaljson.encode_canonical_json(config_json)
 
-    def get_config_digest(self) -> FormattedSHA256:
-        """
-        Retrieves the SHA256 digest value of the raw image configuration.
-
-        Returns:
-            The SHA256 digest value of the raw image configuration.
-        """
-        return formatted_digest(self.get_config())
-
-    def get_config_digest_canonical(self) -> FormattedSHA256:
+    def get_digest_canonical(self) -> FormattedSHA256:
         """
         Retrieves the SHA256 digest value of the image configuration in canonical JSON form.
 
         Returns:
             The SHA256 digest value of the image configuration in canonical JSON form.
         """
-        return formatted_digest(self.get_config_canonical())
+        return FormattedSHA256.calculate(self.get_bytes_canonical())
 
-    def get_image_layers(self) -> List:
+    def get_image_layers(self) -> List[FormattedSHA256]:
         """
         Retrieves the listing of image layer identifiers.
 
@@ -175,13 +142,14 @@ class ImageConfig:
         """
         # Note: We need to handle both key cases, as Microsoft does not conform to the standard.
         try:
-            rootfs = self.config_json["rootfs"]
+            rootfs = self.get_json()["rootfs"]
         except KeyError:
-            rootfs = self.config_json["rootfS"]
+            rootfs = self.get_json()["rootfS"]
 
         if rootfs is None:
-            raise RuntimeError(
-                "Unable to locate rootf[Ss] key within image configuration!"
+            raise MalformedConfigurationError(
+                "Unable to locate rootf[Ss] key within image configuration!",
+                config=self,
             )
 
         diff_ids = rootfs["diff_ids"]
@@ -191,7 +159,7 @@ class ImageConfig:
         """Helper method to remove all signatures from the image configuration."""
         self.set_signature_list([])
 
-    def get_signature_list(self) -> List:
+    def get_signature_list(self) -> List[ImageConfigSignatureEntry]:
         """
         Retrieves the signature list from the image configuration.
 
@@ -209,14 +177,14 @@ class ImageConfig:
         Returns:
             The deserialized / unescaped signature list in JSON form.
         """
-        labels = ImageConfig._get_labels(self.config_json)
+        labels = ImageConfig._get_labels(self.get_json())
         return json.loads(
             labels.get(
                 ImageConfig.SIGNATURES_LABEL, ImageConfig.DEFAULT_SIGNATURES_VALUE
             )
         )
 
-    def set_signature_list(self, signatures: List):
+    def set_signature_list(self, signatures: List[ImageConfigSignatureEntry]):
         """
         Serializes / escapes and assigns signature list to the image configuration. The method modifies the raw image
         configuration.
@@ -224,11 +192,12 @@ class ImageConfig:
         Args:
             signatures: The deserialized / unescaped signature list in JSON form.
         """
-        labels = ImageConfig._get_labels(self.config_json)
+        _json = self.get_json()
+        labels = ImageConfig._get_labels(_json)
         labels[ImageConfig.SIGNATURES_LABEL] = json.dumps(signatures)
-        self._set_config_json(self.config_json)
+        self._set_json(_json)
 
-    def sign(
+    async def sign(
         self, signer: Signer, signature_type: SignatureTypes = SignatureTypes.SIGN
     ) -> str:
         """
@@ -253,8 +222,8 @@ class ImageConfig:
         signatures = self.get_signature_list()
         if signature_type != SignatureTypes.ENDORSE:
             self.clear_signature_list()
-        digest = self.get_config_digest_canonical()
-        signature = signer.sign(digest.encode("utf-8"))
+        digest = self.get_digest_canonical()
+        signature = await signer.sign(digest.encode("utf-8"))
         if not signature:
             raise RuntimeError("Failed to create signature!")
 
@@ -267,7 +236,7 @@ class ImageConfig:
 
         return signature
 
-    def verify_signatures(self) -> Dict:
+    async def verify_signatures(self) -> ImageConfigVerifySignatures:
         """
         Verifies the PEM encoded signature values in the image configuration.
 
@@ -278,7 +247,7 @@ class ImageConfig:
         """
         signatures = self.get_signature_list()
         if not signatures:
-            raise RuntimeError("Image does not contain any signatures!")
+            raise NoSignatureError()
 
         # Assumptions:
         # * The signature list is ordered.
@@ -287,7 +256,7 @@ class ImageConfig:
 
         results = []
         for i, signature in enumerate(signatures):
-            _temp = copy.deepcopy(self)
+            _temp = deepcopy(self)
             # (Co-)signature
             if signature["digest"] == signatures[0]["digest"]:
                 _temp.clear_signature_list()
@@ -295,13 +264,16 @@ class ImageConfig:
             else:
                 _temp.set_signature_list(signatures[:i])
 
-            digest = _temp.get_config_digest_canonical()
+            digest = _temp.get_digest_canonical()
             must_be_equal(
-                signature["digest"], digest, "Image config canonical digest mismatch"
+                signature["digest"],
+                digest,
+                "Image config canonical digest mismatch",
+                error_type=DigestMismatchError,
             )
 
             signer = Signer.for_signature(signature["signature"])
-            result = signer.verify(digest.encode("utf-8"), signature["signature"])
+            result = await signer.verify(digest.encode("utf-8"), signature["signature"])
             results.append(result)
 
         return {"signatures": signatures, "results": results}

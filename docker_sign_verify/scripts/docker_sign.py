@@ -4,25 +4,52 @@
 
 import logging
 import os
+import sys
+
+from traceback import print_exception
+from typing import TypedDict
 
 import click
-import urllib3
 
+from click.core import Context
+from docker_registry_client_async import ImageName
 from docker_sign_verify import (
     ArchiveImageSource,
     DeviceMapperRepositoryImageSource,
-    ImageName,
+    ImageSource,
     RegistryV2ImageSource,
     SignatureTypes,
 )
+from docker_sign_verify.imagesource import ImageSourceSignImage
 
-from .common import logging_options, set_log_levels, version
+from .common import (
+    async_command,
+    LOGGING_DEFAULT,
+    logging_options,
+    set_log_levels,
+    version,
+)
 from .utils import to_image_name, HiddenPassword
 
 LOGGER = logging.getLogger(__name__)
 
-# Bug Fix: There isn't anything we can do about mis-configured remote certificates ...
-urllib3.disable_warnings(urllib3.exceptions.SecurityWarning)
+
+class TypingContextObject(TypedDict):
+    # pylint: disable=missing-class-docstring
+    dest_image_name: ImageName
+    dry_run: bool
+    imagesource: ImageSource
+    keyid: str
+    keypass: str
+    signature_type: str
+    sigtype: str
+    src_image_name: ImageName
+    verbosity: int
+
+
+def get_context_object(context: Context) -> TypingContextObject:
+    """Wrapper method to enforce type checking."""
+    return context.obj
 
 
 def sign_options(function):
@@ -64,39 +91,57 @@ def sign_options(function):
     return function
 
 
-def sign(context):
+@async_command
+async def sign(context: Context) -> ImageSourceSignImage:
     """Signs an image."""
 
-    if context.obj["sigtype"] == "gpg" and (
-        "." in context.obj["keyid"] or "/" in context.obj["keyid"]
-    ):
-        LOGGER.warning("Key identifier looks like path, but signature type is GPG!")
+    result = None
 
-    signer_module = __import__("docker_sign_verify.signers")
-    signer_class = getattr(
-        signer_module, "{0}Signer".format(context.obj["sigtype"].upper())
-    )
-    signer = signer_class(context.obj["keyid"], context.obj["keypass"])
+    ctx = get_context_object(context)
+    try:
+        if ctx["sigtype"] == "gpg" and ("." in ctx["keyid"] or "/" in ctx["keyid"]):
+            LOGGER.warning("Key identifier looks like path, but signature type is GPG!")
 
-    result = context.obj["imagesource"].sign_image(
-        signer,
-        context.obj["src_image_name"],
-        context.obj["imagesource"],
-        context.obj["dest_image_name"],
-        SignatureTypes[context.obj["signature_type"].upper()],
-    )
-    if context.obj["dry_run"]:
-        LOGGER.info(
-            "Dry run completed for image: %s (%s)",
-            context.obj["dest_image_name"].resolve_name(),
-            result["image_config"].get_config_digest(),
+        # TODO: Do we still need to use reflection here to avoid circular dependencies?
+        module = __import__(__package__)
+        sigtype = f"{ctx['sigtype'].upper()}Signer"
+        if sigtype == "GPGSigner":
+            signer_class = getattr(module, sigtype)
+            signer = signer_class(keyid=ctx["keyid"], passphrase=ctx["keypass"])
+        elif sigtype == "PKISigner":
+            signer_class = getattr(module, sigtype)
+            signer = signer_class(keypair_path=ctx["keyid"], passphrase=ctx["keypass"])
+        else:
+            raise RuntimeError(f"Unknown signature type: {ctx['sigtype']}!")
+
+        result = await ctx["imagesource"].sign_image(
+            signer,
+            ctx["src_image_name"],
+            ctx["imagesource"],
+            ctx["dest_image_name"],
+            SignatureTypes[ctx["signature_type"].upper()],
         )
-    else:
-        LOGGER.info(
-            "Created new image: %s (%s)",
-            context.obj["dest_image_name"].resolve_name(),
-            result["image_config"].get_config_digest(),
-        )
+        if ctx["dry_run"]:
+            LOGGER.info(
+                "Dry run completed for image: %s (%s)",
+                ctx["dest_image_name"].resolve_name(),
+                result["image_config"].get_digest(),
+            )
+        else:
+            LOGGER.info(
+                "Created new image: %s (%s)",
+                ctx["dest_image_name"].resolve_name(),
+                result["image_config"].get_digest(),
+            )
+    except Exception as exception:  # pylint: disable=broad-except
+        if ctx["verbosity"] > 0:
+            logging.fatal(exception)
+        if ctx["verbosity"] > LOGGING_DEFAULT:
+            exc_info = sys.exc_info()
+            print_exception(*exc_info)
+        sys.exit(1)
+    finally:
+        await ctx["imagesource"].close()
 
     return result
 
@@ -114,11 +159,23 @@ def sign(context):
 )
 @logging_options
 @click.pass_context
-def cli(context, dry_run: False, signature_type: "sign", verbosity: int = 2):
+def cli(
+    context: Context,
+    dry_run: False,
+    signature_type: "sign",
+    verbosity: int = LOGGING_DEFAULT,
+):
     """Creates and embeds signatures into docker images."""
 
+    if verbosity is None:
+        verbosity = LOGGING_DEFAULT
+
     set_log_levels(verbosity)
-    context.obj = {"dry_run": dry_run, "signature_type": signature_type}
+    context.obj = {
+        "dry_run": dry_run,
+        "signature_type": signature_type,
+        "verbosity": verbosity,
+    }
 
 
 @cli.command()
@@ -133,7 +190,7 @@ def cli(context, dry_run: False, signature_type: "sign", verbosity: int = 2):
 @click.pass_context
 # pylint: disable=redefined-outer-name,too-many-arguments
 def archive(
-    context,
+    context: Context,
     keyid: str,
     keypass: str,
     sigtype: str,
@@ -143,14 +200,13 @@ def archive(
 ):
     """Operates on docker-save produced archives."""
 
-    context.obj["keyid"] = keyid
-    context.obj["keypass"] = keypass
-    context.obj["sigtype"] = sigtype
-    context.obj["src_image_name"] = src_image_name
-    context.obj["dest_image_name"] = dest_image_name
-    context.obj["imagesource"] = ArchiveImageSource(
-        archive=archive, dry_run=context.obj["dry_run"]
-    )
+    ctx = get_context_object(context)
+    ctx["keyid"] = keyid
+    ctx["keypass"] = keypass
+    ctx["sigtype"] = sigtype
+    ctx["src_image_name"] = src_image_name
+    ctx["dest_image_name"] = dest_image_name
+    ctx["imagesource"] = ArchiveImageSource(archive=archive, dry_run=ctx["dry_run"])
     sign(context)
 
 
@@ -159,7 +215,7 @@ def archive(
 @click.pass_context
 # pylint: disable=too-many-arguments
 def registry(
-    context,
+    context: Context,
     keyid: str,
     keypass: str,
     sigtype: str,
@@ -168,12 +224,13 @@ def registry(
 ):
     """Operates on docker registries (v2)."""
 
-    context.obj["keyid"] = keyid
-    context.obj["keypass"] = keypass
-    context.obj["sigtype"] = sigtype
-    context.obj["src_image_name"] = src_image_name
-    context.obj["dest_image_name"] = dest_image_name
-    context.obj["imagesource"] = RegistryV2ImageSource(dry_run=context.obj["dry_run"])
+    ctx = get_context_object(context)
+    ctx["keyid"] = keyid
+    ctx["keypass"] = keypass
+    ctx["sigtype"] = sigtype
+    ctx["src_image_name"] = src_image_name
+    ctx["dest_image_name"] = dest_image_name
+    ctx["imagesource"] = RegistryV2ImageSource(dry_run=ctx["dry_run"])
     sign(context)
 
 
@@ -182,7 +239,7 @@ def registry(
 @click.pass_context
 # pylint: disable=too-many-arguments
 def repository(
-    context,
+    context: Context,
     keyid: str,
     keypass: str,
     sigtype: str,
@@ -191,14 +248,13 @@ def repository(
 ):
     """Operates on docker repositories."""
 
-    context.obj["keyid"] = keyid
-    context.obj["keypass"] = keypass
-    context.obj["sigtype"] = sigtype
-    context.obj["src_image_name"] = src_image_name
-    context.obj["dest_image_name"] = dest_image_name
-    context.obj["imagesource"] = DeviceMapperRepositoryImageSource(
-        dry_run=context.obj["dry_run"]
-    )
+    ctx = get_context_object(context)
+    ctx["keyid"] = keyid
+    ctx["keypass"] = keypass
+    ctx["sigtype"] = sigtype
+    ctx["src_image_name"] = src_image_name
+    ctx["dest_image_name"] = dest_image_name
+    ctx["imagesource"] = DeviceMapperRepositoryImageSource(dry_run=ctx["dry_run"])
     sign(context)
 
 

@@ -18,8 +18,7 @@ The goal of this utility is to operate directly on:
 
 ## Compatibility
 
-* Tested with python 3.7
-* Not tested in python 2.X
+* Tested with python 3.8
 
 ## Installation
 ### From [pypi.org](https://pypi.org/project/docker_sign_verify/)
