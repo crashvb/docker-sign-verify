@@ -68,7 +68,7 @@ class ImageSource(abc.ABC):
     Abstract source of docker images.
     """
 
-    def __init__(self, *, dry_run: bool = False):
+    def __init__(self, *, dry_run: bool = False, **kwargs):
         """
         Args:
             dry_run: If true, destination image sources will not be changed.
@@ -157,7 +157,9 @@ class ImageSource(abc.ABC):
             "    config digest (canonical): %s", xellipsis(config_digest_canonical)
         )
         must_be_equal(
-            config_digest, image_config.get_digest(), "Image config digest mismatch",
+            config_digest,
+            image_config.get_digest(),
+            "Image config digest mismatch",
         )
 
         # Retrieve the image layers from the image configuration ...

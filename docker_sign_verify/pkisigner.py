@@ -72,7 +72,8 @@ class PKISigner(Signer):
         Returns:
             The list of PEM encoded entries.
         """
-        # TODO: Convert to generator (yeild) and refactore get_private_signer and get_public_signer to use "async for" instead ...
+        # TODO: Convert to generator (yield) and refactor get_private_signer and get_public_signer to use "async for"
+        #       instead ...
         if self.keypair_entries is None:
             # TODO: Convert to async
             with open(self.keypair_path, "r") as file:

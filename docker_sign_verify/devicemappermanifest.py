@@ -2,7 +2,6 @@
 
 """Classes that provide abstractions of different image source manifests."""
 
-from copy import deepcopy
 from pathlib import Path
 from typing import List
 
@@ -29,7 +28,7 @@ class DeviceMapperRepositoryManifest(Manifest):
         Returns:
             The corresponding repository key.
         """
-        key_name = deepcopy(image_name)
+        key_name = image_name.clone()
         key_name.tag = None
         return str(key_name)
 

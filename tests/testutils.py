@@ -10,7 +10,7 @@ from typing import Union
 import aiofiles
 
 from docker_registry_client_async.formattedsha256 import FormattedSHA256
-from docker_registry_client_async.utils import CHUNK_SIZE
+from docker_sign_verify.utils import CHUNK_SIZE
 
 
 def get_test_data_path(request, name) -> Path:

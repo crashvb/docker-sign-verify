@@ -55,7 +55,11 @@ async def gpgsigner(request, tmp_path: Path, caplog: LogCaptureFixture) -> GPGSi
         )
 
     request.addfinalizer(_stop_gpg_agent)
-    signer = GPGSigner(keyid=None, passphrase="testing", homedir=tmp_path,)
+    signer = GPGSigner(
+        keyid=None,
+        passphrase="testing",
+        homedir=tmp_path,
+    )
     # pylint: disable=protected-access
     await signer._debug_init_store()
 

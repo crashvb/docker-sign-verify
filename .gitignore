@@ -3,6 +3,8 @@
 .venv
 build
 dist
+tests.txt
+tmp
 
 *.egg-info
 *.pyc

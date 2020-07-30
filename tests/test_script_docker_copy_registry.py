@@ -6,24 +6,23 @@
 
 import logging
 
-from copy import deepcopy
+from pathlib import Path
 
 import pytest
 
 from _pytest.logging import LogCaptureFixture
 from docker_registry_client_async import Indices
+from pytest_docker_registry_fixtures import DockerRegistrySecure
 from docker_sign_verify import GPGSigner
 from docker_sign_verify.scripts.docker_copy import cli
 from docker_sign_verify.scripts.docker_sign import cli as cli_signer
 
-from .localregistry import (
-    docker_client,
-    known_good_image_local,
-    known_good_image_remote,
-    pytest_registry,
-    TypingKnownGoodImage,
-)  # Needed for pytest.fixtures
-from .test_script_docker_sign_registry import insecure_registry, temporary_gpg_homedir
+from .conftest import _pytestmark as pytestmark, TypingKnownGoodImage
+from .test_script_docker_sign_registry import (
+    ca_trust_store,
+    registry_credentials,
+    temporary_gpg_homedir,
+)
 from .test_gpgsigner import gpgsigner
 
 LOGGER = logging.getLogger(__name__)
@@ -38,22 +37,26 @@ def test_empty_args(clirunner):
 
 @pytest.mark.online
 def test_invalid_keyid(
-    runner,
-    clirunner,
-    known_good_image_local: TypingKnownGoodImage,
-    gpgsigner: GPGSigner,
     caplog: LogCaptureFixture,
+    clirunner,
+    docker_registry_secure: DockerRegistrySecure,
+    gpgsigner: GPGSigner,
+    known_good_image: TypingKnownGoodImage,
+    runner,
+    tmp_path: Path,
 ):
     """Test docker-verify can handle signed images with unknown keyids."""
     caplog.clear()
     caplog.set_level(logging.DEBUG)
 
-    source = known_good_image_local["image_name"]
-    destination = deepcopy(source)
+    source = known_good_image["image_name"]
+    destination = source.clone()
     destination.digest = None
-    destination.tag += "_signed"
+    destination.tag += __name__
 
-    with insecure_registry():
+    with ca_trust_store(docker_registry_secure.cacerts), registry_credentials(
+        docker_registry_secure, tmp_path
+    ):
         with temporary_gpg_homedir(gpgsigner.homedir):
             result = clirunner.invoke(
                 cli_signer,
@@ -73,8 +76,8 @@ def test_invalid_keyid(
 
         caplog.clear()
 
-        copy = deepcopy(destination)
-        copy.tag += "_copy"
+        copy = destination.clone()
+        copy.tag += f"{__name__}_copy"
 
         result = runner.invoke(cli, args=["registry", str(destination), str(copy)])
         assert result.exception
@@ -85,21 +88,27 @@ def test_invalid_keyid(
 
 @pytest.mark.online
 def test_no_signatures_check_signatures(
-    runner, known_good_image_local: TypingKnownGoodImage, caplog: LogCaptureFixture
+    caplog: LogCaptureFixture,
+    docker_registry_secure: DockerRegistrySecure,
+    known_good_image: TypingKnownGoodImage,
+    runner,
+    tmp_path: Path,
 ):
     """Test docker-verify can operate on images without existing signatures."""
     caplog.clear()
     caplog.set_level(logging.DEBUG)
 
-    source = known_good_image_local["image_name"]
-    destination = deepcopy(source)
+    source = known_good_image["image_name"]
+    destination = source.clone()
     destination.digest = None
-    destination.tag += "_copy"
+    destination.tag += __name__
 
-    with insecure_registry():
+    with ca_trust_store(docker_registry_secure.cacerts), registry_credentials(
+        docker_registry_secure, tmp_path
+    ):
         result = runner.invoke(
             cli,
-            args=["--check-signatures", "registry", str(source), str(destination),],
+            args=["--check-signatures", "registry", str(source), str(destination)],
         )
     assert isinstance(result.exception, SystemExit)
     assert "does not contain any signatures" in caplog.text
@@ -108,18 +117,24 @@ def test_no_signatures_check_signatures(
 
 @pytest.mark.online
 def test_no_signatures_no_check_signatures(
-    runner, known_good_image_local: TypingKnownGoodImage, caplog: LogCaptureFixture
+    caplog: LogCaptureFixture,
+    docker_registry_secure: DockerRegistrySecure,
+    known_good_image: TypingKnownGoodImage,
+    runner,
+    tmp_path: Path,
 ):
     """Test docker-verify can operate on images without existing signatures."""
     caplog.clear()
     caplog.set_level(logging.DEBUG)
 
-    source = known_good_image_local["image_name"]
-    destination = deepcopy(source)
+    source = known_good_image["image_name"]
+    destination = source.clone()
     destination.digest = None
-    destination.tag += "_copy"
+    destination.tag += __name__
 
-    with insecure_registry():
+    with ca_trust_store(docker_registry_secure.cacerts), registry_credentials(
+        docker_registry_secure, tmp_path
+    ):
         result = runner.invoke(
             cli,
             args=[
@@ -138,7 +153,7 @@ def test_no_signatures_no_check_signatures(
 
 
 @pytest.mark.online
-def test_not_found(runner, caplog: LogCaptureFixture):
+def test_not_found(caplog: LogCaptureFixture, runner):
     """Test docker-verify can handle incorrect image names."""
     caplog.clear()
     caplog.set_level(logging.DEBUG)
@@ -154,22 +169,26 @@ def test_not_found(runner, caplog: LogCaptureFixture):
 
 @pytest.mark.online
 def test_signed(
-    runner,
-    clirunner,
-    known_good_image_local: TypingKnownGoodImage,
-    gpgsigner: GPGSigner,
     caplog: LogCaptureFixture,
+    docker_registry_secure: DockerRegistrySecure,
+    clirunner,
+    gpgsigner: GPGSigner,
+    known_good_image: TypingKnownGoodImage,
+    runner,
+    tmp_path: Path,
 ):
     """Test docker-verify can handle signed images."""
     caplog.clear()
     caplog.set_level(logging.DEBUG)
 
-    source = known_good_image_local["image_name"]
-    destination = deepcopy(source)
+    source = known_good_image["image_name"]
+    destination = source.clone()
     destination.digest = None
-    destination.tag += "_signed"
+    destination.tag += __name__
 
-    with insecure_registry(), temporary_gpg_homedir(gpgsigner.homedir):
+    with ca_trust_store(docker_registry_secure.cacerts), registry_credentials(
+        docker_registry_secure, tmp_path
+    ), temporary_gpg_homedir(gpgsigner.homedir):
         result = clirunner.invoke(
             cli_signer,
             args=[
@@ -188,8 +207,8 @@ def test_signed(
 
         caplog.clear()
 
-        copy = deepcopy(destination)
-        copy.tag += "_copy"
+        copy = destination.clone()
+        copy.tag += f"{__name__}_copy"
 
         result = runner.invoke(cli, args=["registry", str(destination), str(copy)])
         assert not result.exception
@@ -201,7 +220,7 @@ def test_signed(
 
 
 @pytest.mark.online
-def test_unauthorized(runner, caplog: LogCaptureFixture):
+def test_unauthorized(caplog: LogCaptureFixture, runner):
     """Test docker-verify can handle incorrect credentials."""
     caplog.clear()
     caplog.set_level(logging.DEBUG)

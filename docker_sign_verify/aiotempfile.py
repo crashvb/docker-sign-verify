@@ -28,6 +28,7 @@ def open(
 ) -> AiofilesContextManager:
     """
     Create and return a temporary file.
+
     Args:
         mode: The mode argument to io.open (default "w+b").
         suffix: If 'suffix' is not None, the file name will end with that suffix, otherwise there will be no suffix.

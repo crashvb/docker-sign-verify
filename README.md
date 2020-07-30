@@ -21,7 +21,7 @@ The goal of this utility is to operate directly on:
 * Tested with python 3.8
 
 ## Installation
-### From [pypi.org](https://pypi.org/project/docker_sign_verify/)
+### From [pypi.org](https://pypi.org/project/docker-sign-verify/)
 
 ```
 $ pip install docker_sign_verify

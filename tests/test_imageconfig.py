@@ -365,8 +365,8 @@ async def test_sign_resign(
 async def test_sign_endorse_recursive(image_config: ImageConfig):
     """Test interlaced signatures and endorsements."""
 
-    # Stack representation of a binary tree
-    stack = [{"name": "?-Unsigned", "image_config": deepcopy(image_config)}]
+    # Stack representation of a ternary tree
+    stack = [{"name": "?-Unsigned", "image_config": image_config.clone()}]
     LOGGER.debug("Unsigned Canonical Digest: %s", image_config.get_digest_canonical())
 
     async def append_new_image_config(
@@ -401,7 +401,7 @@ async def test_sign_endorse_recursive(image_config: ImageConfig):
                 LOGGER.debug("    %s", signature["signature"])
                 if f"X{SignatureTypes.ENDORSE.name}" in signature["signature"]:
                     # Endorsement digests should include all entities of a lower order.
-                    temp = deepcopy(frame["image_config"])
+                    temp = frame["image_config"].clone()
                     temp.set_signature_list(temp.get_signature_list()[:sig])
                     assert signature["digest"] == temp.get_digest_canonical()
                     assert temp.get_digest_canonical() in signature["signature"]
@@ -414,11 +414,11 @@ async def test_sign_endorse_recursive(image_config: ImageConfig):
             # Unshift the first image configuration, append three more image configurations on to the stack: ...
             # ... one signed ...
             await append_new_image_config(
-                config=deepcopy(frame["image_config"]), iteration=i
+                config=frame["image_config"].clone(), iteration=i
             )
             # ... one endorsed ...
             await append_new_image_config(
-                config=deepcopy(frame["image_config"]),
+                config=frame["image_config"].clone(),
                 signature_type=SignatureTypes.ENDORSE,
                 iteration=i,
             )

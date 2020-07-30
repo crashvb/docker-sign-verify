@@ -5,7 +5,6 @@
 import logging
 import os
 
-from copy import deepcopy
 from typing import cast, List
 
 from docker_registry_client_async import (
@@ -44,10 +43,6 @@ class RegistryV2ImageSource(ImageSource):
     PLATFORM_OS = os.environ.get("DSV_OPERATING_SYSTEM", "linux")
 
     def __init__(self, **kwargs):
-        """
-        Args:
-            credentials_store: Path to the docker registry credentials store.
-        """
         super().__init__(**kwargs)
         kwargs.pop("dry_run", None)
         self.docker_registry_client_async = DockerRegistryClientAsync(**kwargs)
@@ -220,7 +215,7 @@ class RegistryV2ImageSource(ImageSource):
         LOGGER.debug("    config digest (signed): %s", config_digest)
 
         # Generate a new registry manifest ...
-        manifest = deepcopy(data["verify_image_data"]["manifest"])
+        manifest = data["verify_image_data"]["manifest"].clone()
         manifest = cast(RegistryV2Manifest, manifest)
         manifest.set_config_digest(config_digest, len(image_config.get_bytes()))
         data = cast(ImageSourceSignImage, data)
