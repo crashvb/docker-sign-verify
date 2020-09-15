@@ -13,14 +13,13 @@ import gnupg  # Needed for type checking
 
 from aiofiles.base import AiofilesContextManager
 from docker_registry_client_async import FormattedSHA256, ImageName
-from docker_registry_client_async.typing import UtilsChunkToFile
 from docker_registry_client_async.utils import must_be_equal
 
 from .exceptions import SignatureMismatchError
 from .imageconfig import ImageConfig, SignatureTypes
 from .manifest import Manifest
 from .signer import Signer
-from .utils import xellipsis
+from .utils import UtilChunkFile, xellipsis
 
 LOGGER = logging.getLogger(__name__)
 
@@ -48,7 +47,7 @@ class ImageSourceVerifyImageConfig(TypedDict):
     manifest_layers: List[FormattedSHA256]
 
 
-class ImageSourceGetImageLayerToDisk(UtilsChunkToFile):
+class ImageSourceGetImageLayerToDisk(UtilChunkFile):
     # pylint: disable=missing-class-docstring
     pass
 

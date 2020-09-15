@@ -61,17 +61,17 @@ class DeviceMapperRepositoryImageSource(ImageSource):
         _bytes = await read_file(path)
         cache_id = _bytes.decode("utf-8")
         if not cache_id:
-            raise RuntimeError("Unable to find cache id for layer: {0}".format(layer))
+            raise RuntimeError(f"Unable to find cache id for layer: {layer}")
         path = DeviceMapperRepositoryImageSource.DM_METADATA_ROOT.joinpath(cache_id)
         raw_metadata = read_file(path)
         metadata = json.loads(raw_metadata)
         if not (metadata["device_id"] or metadata["size"]):
             raise RuntimeError(
-                "Unable to find device id and / or size for layer: {0}".format(layer)
+                f"Unable to find device id and / or size for layer: {layer}"
             )
 
         # Create the devicemapper table ...
-        device_name = "dsv-{0}".format(layer)
+        device_name = f"dsv-{layer}"
         # TODO: How to we find the vgname?
         volume_group = "/dev/mapper/rhel-docker--pool"
         table = "0 {0} thin {1} {2}".format(
@@ -100,9 +100,7 @@ class DeviceMapperRepositoryImageSource(ImageSource):
         )
         rootfs = mount.joinpath("rootfs")
         if not rootfs.exists():
-            raise RuntimeError(
-                "Root filesystem does not exist for layer: {0}".format(layer)
-            )
+            raise RuntimeError(f"Root filesystem does not exist for layer: {layer}")
         # TODO: Replace this with a pure-python implementation
         process = subprocess.Popen(
             ["tar-split", "asm", "--input", str(path), "--path", rootfs],
@@ -253,9 +251,7 @@ class DeviceMapperRepositoryImageSource(ImageSource):
             data["manifest_signed"] = manifest_signed
             await dest_image_source.put_manifest(manifest_signed, dest_image_name)
         else:
-            raise RuntimeError(
-                "Unknown derived class: {0}".format(type(dest_image_source))
-            )
+            raise RuntimeError(f"Unknown derived class: {type(dest_image_source)}")
 
         if not self.dry_run:
             LOGGER.debug("Created new image: %s", dest_image_name.resolve_name())
@@ -279,7 +275,7 @@ class DeviceMapperRepositoryImageSource(ImageSource):
             must_be_equal(
                 data["image_layers"][i],
                 data_compressed["digest"],
-                "Repository layer[{0}] digest mismatch".format(i),
+                f"Repository layer[{i}] digest mismatch",
             )
 
         LOGGER.debug("Integrity check passed.")

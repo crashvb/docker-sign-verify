@@ -50,7 +50,7 @@ class RegistryV2ManifestList(Manifest):
             OCIMediaTypes.IMAGE_INDEX_V1,
         ]:
             raise NotImplementedError(
-                "Unsupported media type: {0}".format(self.get_media_type())
+                f"Unsupported media type: {self.get_media_type()}"
             )
 
         result = []

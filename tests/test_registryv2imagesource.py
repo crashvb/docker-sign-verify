@@ -39,7 +39,7 @@ from docker_sign_verify.imagesource import (
 )
 
 from .conftest import (
-    get_test_data,
+    get_test_data_registryv2,
     _pytestmark,
     TypingGetTestData,
     TypingKnownGoodImage,
@@ -95,7 +95,7 @@ async def replicate_manifest_lists(docker_registry_secure: DockerRegistrySecure)
         "Replicating manifest lists into %s ...", docker_registry_secure.service_name
     )
     async with DockerRegistryClientAsync() as docker_registry_client_async:
-        for image in get_test_data():
+        for image in get_test_data_registryv2():
             if "tag_resolves_to_manifest_list" not in image:
                 continue
 
@@ -152,10 +152,10 @@ async def test_get_image_config(
     LOGGER.debug(
         "Retrieving image configuration for: %s ...", known_good_image["image_name"]
     )
-    config = await registry_v2_image_source.get_image_config(
+    image_config = await registry_v2_image_source.get_image_config(
         known_good_image["image_name"], **kwargs
     )
-    assert isinstance(config, ImageConfig)
+    assert isinstance(image_config, ImageConfig)
 
 
 @pytest.mark.online
@@ -171,7 +171,9 @@ async def test_get_image_layer_to_disk(
     )
     config_digest = manifest.get_config_digest()
 
-    LOGGER.debug("Retrieving blob: %s/%s ...", config_digest, config_digest)
+    LOGGER.debug(
+        "Retrieving blob: %s/%s ...", known_good_image["image_name"], config_digest
+    )
     async with aiotempfile(mode="w+b") as file:
         result = await registry_v2_image_source.get_image_layer_to_disk(
             known_good_image["image_name"], config_digest, file, **kwargs
@@ -197,7 +199,7 @@ async def test_get_manifest(
 
 
 @pytest.mark.online
-@pytest.mark.parametrize("image", get_test_data())
+@pytest.mark.parametrize("image", get_test_data_registryv2())
 async def test_get_manifest_list(
     docker_registry_secure: DockerRegistrySecure,
     image: TypingGetTestData,
@@ -206,9 +208,7 @@ async def test_get_manifest_list(
 ):
     """Test manifest retrieval."""
     if "tag_resolves_to_manifest_list" not in image:
-        pytest.skip(
-            "Image {0} does not reference a manifest list.".format(image["image"])
-        )
+        pytest.skip(f"Image {image['image']} does not reference a manifest list.")
 
     image_name = ImageName(
         image["image"],
@@ -243,7 +243,30 @@ async def test_layer_exists(
     )
 
 
-# TODO async def test_put_image
+@pytest.mark.online_modification
+async def test_put_image(
+    registry_v2_image_source: RegistryV2ImageSource,
+    known_good_image: TypingKnownGoodImage,
+    **kwargs,
+):
+    """Test image layer assignment."""
+    image_name = known_good_image["image_name"]
+    LOGGER.debug("Retrieving image: %s ...", image_name)
+    response = await registry_v2_image_source.verify_image_integrity(
+        image_name, **kwargs
+    )
+
+    image_name.tag += __name__
+
+    LOGGER.debug("Storing image: %s ...", image_name)
+    await registry_v2_image_source.put_image(
+        registry_v2_image_source,
+        image_name,
+        response["manifest"],
+        response["image_config"],
+        response["compressed_layer_files"],
+        **kwargs,
+    )
 
 
 @pytest.mark.online_modification
@@ -275,32 +298,6 @@ async def test_put_image_config(
     )
     # Note: If NoneType, digest may already exist
     assert response["digest"] == image_config.get_digest()
-
-
-@pytest.mark.online_modification
-async def test_put_image(
-    registry_v2_image_source: RegistryV2ImageSource,
-    known_good_image: TypingKnownGoodImage,
-    **kwargs,
-):
-    """Test image layer assignment."""
-    image_name = known_good_image["image_name"]
-    LOGGER.debug("Retrieving image: %s ...", image_name)
-    response = await registry_v2_image_source.verify_image_integrity(
-        image_name, **kwargs
-    )
-
-    image_name.tag += __name__
-
-    LOGGER.debug("Storing image: %s ...", image_name)
-    await registry_v2_image_source.put_image(
-        registry_v2_image_source,
-        image_name,
-        response["manifest"],
-        response["image_config"],
-        response["compressed_layer_files"],
-        **kwargs,
-    )
 
 
 @pytest.mark.online_modification
@@ -400,7 +397,7 @@ async def test_sign_image_same_image_source(
     """Test image signing."""
     dest_image_name = known_good_image["image_name"].clone()
     dest_image_name.digest = None
-    dest_image_name.tag = "{0}_signed".format(dest_image_name.tag)
+    dest_image_name.tag = f"{dest_image_name.tag}_signed"
 
     def assertions(result: ImageSourceSignImage):
         assert result
@@ -462,10 +459,6 @@ async def test_verify_image_integrity(
         assert manifest
 
         assert len(result["compressed_layer_files"]) == len(
-            result["uncompressed_layer_files"]
-        )
-
-        assert len(result["uncompressed_layer_files"]) == len(
             result["uncompressed_layer_files"]
         )
 

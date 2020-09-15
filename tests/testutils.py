@@ -20,7 +20,7 @@ def get_test_data_path(request, name) -> Path:
 
 def get_test_data(request, klass, name, mode="rb") -> Union[bytes, str]:
     """Helper method to retrieve test data."""
-    key = "{0}/{1}".format(klass, name)
+    key = f"{klass}/{name}"
     result = request.config.cache.get(key, None)
     if result is None:
         path = get_test_data_path(request, name)

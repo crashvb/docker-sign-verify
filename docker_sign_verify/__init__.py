@@ -3,7 +3,7 @@
 """Utilities for verifying docker image integrity and signatures."""
 
 from .archiveimagesource import ArchiveImageSource
-from .archivemanifest import ArchiveManifest
+from .archivemanifest import ArchiveChangeset, ArchiveManifest, ArchiveRepositories
 from .devicemapperimagesource import DeviceMapperRepositoryImageSource
 from .devicemappermanifest import DeviceMapperRepositoryManifest
 from .exceptions import *

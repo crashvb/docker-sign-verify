@@ -56,7 +56,7 @@ class TypingKnownGoodImage(TypingGetTestData):
     image_name: ImageName
 
 
-def get_test_data() -> Generator[TypingGetTestData, None, None]:
+def get_test_data_registryv2() -> Generator[TypingGetTestData, None, None]:
     """Dynamically initializes test data for a local mutable registry."""
     images = [
         {
@@ -86,6 +86,46 @@ def get_test_data() -> Generator[TypingGetTestData, None, None]:
                 ),
             },
             "tag_resolves_to_manifest_list": True,
+        },
+    ]
+    for image in images:
+        yield image
+
+
+def get_test_data_archive() -> Generator[TypingGetTestData, None, None]:
+    """Dynamically initializes test data for a local mutable registry."""
+    images = [
+        # docker save library/busybox@sha256:4fe8827f51a5e11bb83afa8227cbccb402df840d32c6b633b7ad079bc8144100 > \
+        #   archive.digest_only.tar
+        # docker save library/busybox:1.30.1 > archive.tag_only.tar
+        {
+            "image": "library/busybox",
+            "digest": "64f5d945efcc0f39ab11b3cd4ba403cc9fefe1fa3613123ca016cf3708e8cafb",
+            "resource": "archive.digest_only.tar",
+            "_digests": {
+                "changeset_manifest": "085587963d46bdf491f864ef64a2aa30f0dadb8bf695b7a1ae2ffada62651dfc",
+                "manifest_64f5d945efcc0f39ab11b3cd4ba403cc9fefe1fa3613123ca016cf3708e8cafb": "ce342a56fdeb0dbf17f8e0d33b5df0ab69e75b53182ba60f06285ec2ddc48dbe",
+            },
+        },
+        {
+            "image": "library/busybox",
+            "tag": "1.30.1",
+            "resource": "archive.tag_only.tar",
+            "_digests": {
+                "changeset_manifest": "e9b3b249bd0b919a7ce6ccbd23d8adb0b91247546fcfe527d74ed2270b9e227d",
+                "manifest_1.30.1": "2c7e2209dc919d046c1111c5082c819f40c8c25ee252f4b6fc2a03695c66a552",
+            },
+        },
+        {
+            "image": "library/busybox",
+            "tag": "1.30.1",
+            "digest": "64f5d945efcc0f39ab11b3cd4ba403cc9fefe1fa3613123ca016cf3708e8cafb",
+            "resource": "archive.tag_only.tar",
+            "_digests": {
+                "changeset_manifest": "e9b3b249bd0b919a7ce6ccbd23d8adb0b91247546fcfe527d74ed2270b9e227d",
+                "manifest_64f5d945efcc0f39ab11b3cd4ba403cc9fefe1fa3613123ca016cf3708e8cafb": "2c7e2209dc919d046c1111c5082c819f40c8c25ee252f4b6fc2a03695c66a552",
+                "manifest_1.30.1": "2c7e2209dc919d046c1111c5082c819f40c8c25ee252f4b6fc2a03695c66a552",
+            },
         },
     ]
     for image in images:
@@ -146,7 +186,7 @@ def clirunner() -> Generator[CliRunner, None, None]:
         yield runner
 
 
-@pytest.fixture(params=get_test_data())
+@pytest.fixture(params=get_test_data_registryv2())
 def known_good_image(
     docker_registry_secure: DockerRegistrySecure, request
 ) -> TypingKnownGoodImage:

@@ -17,7 +17,7 @@ from docker_sign_verify import GPGSigner
 from docker_sign_verify.scripts.docker_sign import cli as cli_signer
 from docker_sign_verify.scripts.docker_verify import cli
 
-from .conftest import _pytestmark as pytestmark, TypingKnownGoodImage
+from .conftest import _pytestmark, TypingKnownGoodImage
 from .test_script_docker_sign_registry import (
     ca_trust_store,
     registry_credentials,
@@ -26,6 +26,8 @@ from .test_script_docker_sign_registry import (
 from .test_gpgsigner import gpgsigner
 
 LOGGER = logging.getLogger(__name__)
+
+pytestmark = _pytestmark
 
 
 def test_empty_args(clirunner):

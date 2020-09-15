@@ -16,17 +16,21 @@ from typing import List, Tuple
 
 import pytest
 
-from _pytest.logging import LogCaptureFixture
-from docker_registry_client_async import DockerRegistryClientAsync, Indices
-from pytest_docker_registry_fixtures import DockerRegistrySecure
-from docker_sign_verify.gpgsigner import GPGSigner
-from docker_sign_verify.scripts.docker_sign import cli
 from OpenSSL import crypto, SSL
 
-from .conftest import _pytestmark as pytestmark, TypingKnownGoodImage
+from docker_registry_client_async import DockerRegistryClientAsync, Indices
+from pytest_docker_registry_fixtures import DockerRegistrySecure
+from _pytest.logging import LogCaptureFixture
+
+from docker_sign_verify.gpgsigner import GPGSigner
+from docker_sign_verify.scripts.docker_sign import cli
+
+from .conftest import _pytestmark, TypingKnownGoodImage
 from .test_gpgsigner import gpgsigner
 
 LOGGER = logging.getLogger(__name__)
+
+pytestmark = _pytestmark
 
 
 def get_certificate_chain(address: Tuple[str, int]) -> List[str]:

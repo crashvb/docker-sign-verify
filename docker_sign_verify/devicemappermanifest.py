@@ -49,9 +49,7 @@ class DeviceMapperRepositoryManifest(Manifest):
         result = layer
         if parent:
             # Note: The image layer is the digest value of the formatted string.
-            result = FormattedSHA256.calculate(
-                "{0} {1}".format(parent, layer).encode("utf-8")
-            )
+            result = FormattedSHA256.calculate(f"{parent} {layer}".encode("utf-8"))
         return result
 
     def override_config(self, config_digest: FormattedSHA256, image_name: ImageName):
