@@ -57,9 +57,6 @@ def _open(file, *args, mode="r", loop=None, executor=None, **kwargs):
     file_descriptior = yield from loop.run_in_executor(executor, partial_function)
     baseio = wrap(file_descriptior, loop=loop, executor=executor)
 
-    # DUCK PUNCH: name
-    baseio.__setattr__("name", str(file))
-
     # DUCK PUNCH: __del__()
     baseio.__del__ = MethodType(duck_punch___del__, baseio)
 
