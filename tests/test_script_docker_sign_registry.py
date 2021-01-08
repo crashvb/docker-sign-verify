@@ -4,21 +4,11 @@
 
 """CLI tests."""
 
-import json
 import logging
-import os
-import shutil
-
-from contextlib import contextmanager
-from pathlib import Path
-from socket import create_connection
-from typing import List, Tuple
 
 import pytest
 
-from OpenSSL import crypto, SSL
-
-from docker_registry_client_async import DockerRegistryClientAsync, Indices
+from docker_registry_client_async import Indices
 from pytest_docker_registry_fixtures import DockerRegistrySecure
 from _pytest.logging import LogCaptureFixture
 
@@ -26,63 +16,12 @@ from docker_sign_verify.gpgsigner import GPGSigner
 from docker_sign_verify.scripts.docker_sign import cli
 
 from .conftest import _pytestmark, TypingKnownGoodImage
-from .test_gpgsigner import gpgsigner
+from .test_gpgsigner import gpgsigner  # Needed for pytest
+from .testutils import ca_trust_store, hybrid_trust_store, registry_credentials
 
 LOGGER = logging.getLogger(__name__)
 
 pytestmark = _pytestmark
-
-
-def get_certificate_chain(address: Tuple[str, int]) -> List[str]:
-    """Retrieves the PEM encoded certificate change being served at a given address."""
-    result = []
-    context = SSL.Context(SSL.TLSv1_2_METHOD)
-    with create_connection(address) as socket:
-        connection = SSL.Connection(context, socket)
-        connection.set_connect_state()
-        connection.do_handshake()
-        for _, certificate in enumerate(connection.get_peer_cert_chain()):
-            buffer = crypto.dump_certificate(crypto.FILETYPE_PEM, certificate)
-            result.append(buffer.decode("utf-8"))
-    return result
-
-
-@contextmanager
-def ca_trust_store(path: Path):
-    """Context manager to globally define the DRCA CA trust store."""
-    key = "DRCA_CACERTS"
-    old = os.environ.get(key, None)
-    os.environ[key] = str(path)
-    yield None
-    if old is not None:
-        os.environ[key] = old
-    else:
-        del os.environ[key]
-
-
-@contextmanager
-def registry_credentials(docker_registry_secure: DockerRegistrySecure, tmp_path: Path):
-    """Context manager to globally define the DRCA credentials store."""
-    old = DockerRegistryClientAsync.DEFAULT_CREDENTIALS_STORE
-
-    auth = docker_registry_secure.auth_header["Authorization"].split()[1]
-    credentials = {"auths": {docker_registry_secure.endpoint: {"auth": auth}}}
-    path = tmp_path.joinpath("config.json")
-    with path.open("w") as file:
-        file.write(json.dumps(credentials))
-    DockerRegistryClientAsync.DEFAULT_CREDENTIALS_STORE = path
-    yield None
-    path.unlink(missing_ok=True)
-    DockerRegistryClientAsync.DEFAULT_CREDENTIALS_STORE = old
-
-
-@contextmanager
-def temporary_gpg_homedir(homedir: Path):
-    """Conext manager to globally set the GNUPGHOME location."""
-    old = GPGSigner.HOMEDIR
-    GPGSigner.HOMEDIR = homedir
-    yield None
-    GPGSigner.HOMEDIR = old
 
 
 @pytest.mark.online
@@ -90,8 +29,8 @@ def test_bad_keyid(
     caplog: LogCaptureFixture,
     clirunner,
     docker_registry_secure: DockerRegistrySecure,
+    gpgsigner: GPGSigner,
     known_good_image: TypingKnownGoodImage,
-    tmp_path: Path,
 ):
     """Test docker-sign can handle invalid keyids."""
     caplog.clear()
@@ -103,7 +42,7 @@ def test_bad_keyid(
     destination.tag += __name__
 
     with ca_trust_store(docker_registry_secure.cacerts), registry_credentials(
-        docker_registry_secure, tmp_path
+        docker_registry_secure
     ):
         result = clirunner.invoke(
             cli,
@@ -114,7 +53,8 @@ def test_bad_keyid(
                 str(source),
                 str(destination),
             ],
-            input="\n",
+            env={"DSV_GPG_DATASTORE": str(gpgsigner.homedir)},
+            input="invalidpassword\n",
         )
 
     assert result.exception
@@ -136,7 +76,6 @@ def test_forced_digest_value(
     docker_registry_secure: DockerRegistrySecure,
     gpgsigner: GPGSigner,
     known_good_image: TypingKnownGoodImage,
-    tmp_path: Path,
 ):
     """Test docker-sign can handle a forced digest value."""
     caplog.clear()
@@ -147,8 +86,8 @@ def test_forced_digest_value(
     destination.tag += __name__
 
     with ca_trust_store(docker_registry_secure.cacerts), registry_credentials(
-        docker_registry_secure, tmp_path
-    ), temporary_gpg_homedir(gpgsigner.homedir):
+        docker_registry_secure
+    ):
         result = clirunner.invoke(
             cli,
             args=[
@@ -158,6 +97,7 @@ def test_forced_digest_value(
                 str(source),
                 str(destination),
             ],
+            env={"DSV_GPG_DATASTORE": str(gpgsigner.homedir)},
             input=f"{gpgsigner.passphrase}\n",
         )
 
@@ -168,7 +108,6 @@ def test_forced_digest_value(
     )
     assert "Integrity check passed." in caplog.text
     assert "Created new image" in caplog.text
-    assert str(destination) not in caplog.text
     destination.digest = None
     assert str(destination) in caplog.text
 
@@ -180,7 +119,6 @@ def test_no_signatures_endorse(
     docker_registry_secure: DockerRegistrySecure,
     gpgsigner: GPGSigner,
     known_good_image: TypingKnownGoodImage,
-    tmp_path: Path,
 ):
     """Test docker-sign can endorse images without existing signatures."""
     caplog.clear()
@@ -192,8 +130,8 @@ def test_no_signatures_endorse(
     destination.tag += __name__
 
     with ca_trust_store(docker_registry_secure.cacerts), registry_credentials(
-        docker_registry_secure, tmp_path
-    ), temporary_gpg_homedir(gpgsigner.homedir):
+        docker_registry_secure
+    ):
         result = clirunner.invoke(
             cli,
             args=[
@@ -205,6 +143,7 @@ def test_no_signatures_endorse(
                 str(source),
                 str(destination),
             ],
+            env={"DSV_GPG_DATASTORE": str(gpgsigner.homedir)},
             input=f"{gpgsigner.passphrase}\n",
         )
 
@@ -221,7 +160,6 @@ def test_no_signatures_sign(
     docker_registry_secure: DockerRegistrySecure,
     gpgsigner: GPGSigner,
     known_good_image: TypingKnownGoodImage,
-    tmp_path: Path,
 ):
     """Test docker-sign can sign images without existing signatures."""
     caplog.clear()
@@ -233,8 +171,8 @@ def test_no_signatures_sign(
     destination.tag += __name__
 
     with ca_trust_store(docker_registry_secure.cacerts), registry_credentials(
-        docker_registry_secure, tmp_path
-    ), temporary_gpg_homedir(gpgsigner.homedir):
+        docker_registry_secure
+    ):
         result = clirunner.invoke(
             cli,
             args=[
@@ -246,6 +184,7 @@ def test_no_signatures_sign(
                 str(source),
                 str(destination),
             ],
+            env={"DSV_GPG_DATASTORE": str(gpgsigner.homedir)},
             input=f"{gpgsigner.passphrase}\n",
         )
 
@@ -262,7 +201,6 @@ def test_no_signatures_sign_implicit(
     docker_registry_secure: DockerRegistrySecure,
     gpgsigner: GPGSigner,
     known_good_image: TypingKnownGoodImage,
-    tmp_path: Path,
 ):
     """Test docker-sign can sign (implicit) images without existing signatures."""
     caplog.clear()
@@ -274,8 +212,8 @@ def test_no_signatures_sign_implicit(
     destination.tag += __name__
 
     with ca_trust_store(docker_registry_secure.cacerts), registry_credentials(
-        docker_registry_secure, tmp_path
-    ), temporary_gpg_homedir(gpgsigner.homedir):
+        docker_registry_secure
+    ):
         result = clirunner.invoke(
             cli,
             args=[
@@ -285,6 +223,7 @@ def test_no_signatures_sign_implicit(
                 str(source),
                 str(destination),
             ],
+            env={"DSV_GPG_DATASTORE": str(gpgsigner.homedir)},
             input=f"{gpgsigner.passphrase}\n",
         )
 
@@ -301,7 +240,6 @@ def test_no_signatures_resign(
     docker_registry_secure: DockerRegistrySecure,
     gpgsigner: GPGSigner,
     known_good_image: TypingKnownGoodImage,
-    tmp_path: Path,
 ):
     """Test docker-sign can resign images without existing signatures."""
     caplog.clear()
@@ -313,8 +251,8 @@ def test_no_signatures_resign(
     destination.tag += __name__
 
     with ca_trust_store(docker_registry_secure.cacerts), registry_credentials(
-        docker_registry_secure, tmp_path
-    ), temporary_gpg_homedir(gpgsigner.homedir):
+        docker_registry_secure
+    ):
         result = clirunner.invoke(
             cli,
             args=[
@@ -326,6 +264,7 @@ def test_no_signatures_resign(
                 str(source),
                 str(destination),
             ],
+            env={"DSV_GPG_DATASTORE": str(gpgsigner.homedir)},
             input=f"{gpgsigner.passphrase}\n",
         )
 
@@ -343,23 +282,15 @@ def test_unauthorized_destination(
     docker_registry_secure: DockerRegistrySecure,
     gpgsigner: GPGSigner,
     known_good_image: TypingKnownGoodImage,
-    tmp_path: Path,
 ):
     """Test docker-sign can handle incorrect credentials."""
     caplog.clear()
     caplog.set_level(logging.DEBUG)
 
-    # Inject the dockerhub TLS certificate chain into a copy of the CA trust store ...
-    path = tmp_path.joinpath("cacerts.withdockerhub")
-    shutil.copy(docker_registry_secure.cacerts, path)
-    with path.open("a") as file:
-        # file.write(ssl.get_server_certificate((Indices.DOCKERHUB, 443)))
-        for certificate in get_certificate_chain((Indices.DOCKERHUB, 443)):
-            file.write(certificate)
-
-    with ca_trust_store(path), registry_credentials(
-        docker_registry_secure, tmp_path
-    ), temporary_gpg_homedir(gpgsigner.homedir):
+    # Using local registry credentials when connecting to dockerhub ...
+    with hybrid_trust_store(docker_registry_secure) as path, ca_trust_store(
+        path
+    ), registry_credentials(docker_registry_secure):
         result = clirunner.invoke(
             cli,
             args=[
@@ -369,6 +300,7 @@ def test_unauthorized_destination(
                 str(known_good_image["image_name"]),
                 f"{Indices.DOCKERHUB}/dummy:dummy",
             ],
+            env={"DSV_GPG_DATASTORE": str(gpgsigner.homedir)},
             input=f"{gpgsigner.passphrase}\n",
         )
 
@@ -383,23 +315,25 @@ def test_unauthorized_source(
     clirunner,
     caplog: LogCaptureFixture,
     docker_registry_secure: DockerRegistrySecure,
+    gpgsigner: GPGSigner,
     known_good_image: TypingKnownGoodImage,
-    tmp_path: Path,
 ):
     """Test docker-sign can handle incorrect credentials."""
     caplog.clear()
     caplog.set_level(logging.DEBUG)
 
-    with registry_credentials(docker_registry_secure, tmp_path):
+    # Using local registry credentials when connecting to dockehub ...
+    with registry_credentials(docker_registry_secure):
         result = clirunner.invoke(
             cli,
             args=[
                 "registry",
                 "--keyid",
-                "invalidkeyid",
+                gpgsigner.keyid,
                 f"{Indices.DOCKERHUB}/dummy:dummy",
                 str(known_good_image["image_name"]),
             ],
+            env={"DSV_GPG_DATASTORE": str(gpgsigner.homedir)},
             input="\n",
         )
 

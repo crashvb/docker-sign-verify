@@ -381,7 +381,7 @@ class ImageSource(abc.ABC):
             if isinstance(result, gnupg._parsers.Verify):
                 if not result.valid:
                     raise SignatureMismatchError(
-                        "Verification failed for signature with key_id '{0}': {1}".format(
+                        "Verification failed for signature with keyid '{0}': {1}".format(
                             result.key_id, result.status
                         )
                     )

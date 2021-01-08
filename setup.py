@@ -44,6 +44,7 @@ setup(
             "pytest",
             "pytest-asyncio",
             "pytest-docker-registry-fixtures",
+            "pytest-gnupg-fixtures",
             "pytest-select",
             "twine",
             "wheel",
@@ -65,7 +66,6 @@ setup(
     long_description_content_type="text/markdown",
     name="docker_sign_verify",
     packages=find_packages(),
-    setup_requires=["pytest-runner"],
     tests_require=[
         "docker",
         "docker-compose",
@@ -73,6 +73,7 @@ setup(
         "pytest",
         "pytest-asyncio",
         "pytest-docker-registry-fixtures",
+        "pytest-gnupg-fixtures",
     ],
     test_suite="tests",
     url="https://pypi.org/project/docker-sign-verify/",
