@@ -31,7 +31,7 @@ async def gpgsigner(gnupg_keypair: GnuPGKeypair) -> GPGSigner:
 
     signer = GPGSigner(
         keyid=gnupg_keypair.fingerprints[1],
-        passphrase="testing",
+        passphrase=gnupg_keypair.passphrase,
         homedir=gnupg_keypair.gnupg_home,
     )
 
