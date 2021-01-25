@@ -38,11 +38,11 @@ LOGGER = logging.getLogger(__name__)
 class TypingContextObject(TypedDict):
     # pylint: disable=missing-class-docstring
     check_signatures: bool
-    dry_run: bool
-    verbosity: int
-    src_image_name: ImageName
     dest_image_name: ImageName
+    dry_run: bool
     imagesource: ImageSource
+    src_image_name: ImageName
+    verbosity: int
 
 
 def get_context_object(context: Context) -> TypingContextObject:
@@ -123,7 +123,10 @@ def cli(
     dry_run: False,
     verbosity: int = LOGGING_DEFAULT,
 ):
-    """Replicates docker images while verifying embedded signatures, and the integrity of docker image layers and metadata."""
+    """
+    Replicates docker images while verifying embedded signatures, and the integrity of docker image layers and
+    metadata.
+    """
 
     if verbosity is None:
         verbosity = LOGGING_DEFAULT

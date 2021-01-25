@@ -10,7 +10,6 @@ https://github.com/moby/moby/blob/master/image/spec/v1.md
 import json
 import logging
 
-from copy import deepcopy
 from typing import Any, Dict, List, TypedDict
 
 import canonicaljson
@@ -256,7 +255,7 @@ class ImageConfig(JsonBytes):
 
         results = []
         for i, signature in enumerate(signatures):
-            _temp = deepcopy(self)
+            _temp = self.clone()
             # (Co-)signature
             if signature["digest"] == signatures[0]["digest"]:
                 _temp.clear_signature_list()

@@ -27,5 +27,8 @@ class HiddenPassword:
         """
         self.password = password
 
+    def __len__(self):
+        return len(self.password)
+
     def __str__(self):
         return "*" * len(self.password)

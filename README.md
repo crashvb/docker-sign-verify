@@ -6,7 +6,7 @@ A utility that can be used to create and verify embedded signatures in docker im
 
 The goal of this utility is to operate directly on:
 
-* Docker Registies (v2)
+* Docker Registries (v2)
 * Docker Repositories (devicemapper, overlay2, aufs)
 * Docker archives (from docker-save)
 
@@ -21,7 +21,7 @@ The goal of this utility is to operate directly on:
 * Tested with python 3.8
 
 ## Installation
-### From [pypi.org](https://pypi.org/project/docker_sign_verify/)
+### From [pypi.org](https://pypi.org/project/docker-sign-verify/)
 
 ```
 $ pip install docker_sign_verify
@@ -200,7 +200,7 @@ d9e31c5898fe
 | Variable | Default Value | Description |
 | ---------| ------------- | ----------- |
 | DSV_GPG_DATASTORE | ~/.gnupg | The GnuPG home directory. |
-| DSV_PKI_DATASTORE | ~/.dsv.pem | The PKI key store and trust store (concatinated PEM entities). |
+| DSV_PKI_DATASTORE | ~/.dsv.pem | The PKI key store and trust store (concatenated PEM entities). |
 | DSV_DOCKERHUB_AUTH | auth.docker.io | The dockerhub authentication endpoint. |
 | DSV_DEFAULT_REGISTRY | index.docker.io | The dockerhub registry API endpoint. |
 | DSV_CREDENTIALS_STORE | ~/.docker/config.json | The docker credentials store. |

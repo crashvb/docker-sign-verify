@@ -154,7 +154,6 @@ def tar_mkdir(file_out, name: str):
 
 
 # TODO: What is the type of "content"?
-# TODO: Convert to aysnc
 def tar_add_file(file_out, name: str, content):
     """
     Creates a file from memory in a given tar archive on disk.
@@ -178,6 +177,23 @@ def tar_add_file(file_out, name: str, content):
         tfile_out.addfile(tarinfo, bytesio)
 
 
+def tar_add_file_from_disk(file_out, name: str, file_in):
+    """
+    Adds a file to a given tar archive on disk to disk.
+
+    Args:
+        file_out: The output file (tar).
+        name: The name of the file to be added.
+        file_in: The input file.
+    """
+    with tarfile.TarFile("tar-archive", "a", file_out) as tfile_out:
+        tarinfo = tfile_out.gettarinfo(None, name, file_in)
+        tarinfo.mode = 0o0644
+        tarinfo.uid = tarinfo.gid = 0
+        tarinfo.uname = tarinfo.gname = ""
+        tfile_out.addfile(tarinfo, file_in)
+
+
 # TODO: Convert to aysnc
 def tar_delete_file(file_out, name: str):
     """
@@ -189,7 +205,7 @@ def tar_delete_file(file_out, name: str):
     """
     with tempfile.TemporaryFile() as tmp:
         with tarfile.open(fileobj=file_out) as tfile_in:
-            with tarfile.open(fileobj=tmp, mode="w:") as tfile_out:
+            with tarfile.open(fileobj=tmp, mode="w") as tfile_out:
                 for tarinfo in tfile_in:
                     if tarinfo.name == name:
                         continue
@@ -202,24 +218,6 @@ def tar_delete_file(file_out, name: str):
         file_out.seek(0)
         tmp.seek(0)
         shutil.copyfileobj(tmp, file_out)
-
-
-# TODO: Convert to aysnc
-def tar(file_out, name: str, file_in):
-    """
-    Adds a file to a given tar archive on disk to disk.
-
-    Args:
-        file_out: The output file (tar).
-        name: The name of the file to be added.
-        file_in: The input file.
-    """
-    with tarfile.TarFile("tar-archive", "a", file_out) as tfile_out:
-        tarinfo = tfile_out.gettarinfo(None, name, file_in)
-        tarinfo.uid = tarinfo.gid = 0
-        tarinfo.uname = tarinfo.gname = ""
-        tarinfo.mode = 0o0644
-        tfile_out.addfile(tarinfo, file_in)
 
 
 async def untar(
@@ -241,13 +239,13 @@ async def untar(
                 result = await chunk_file(
                     tfile_in.extractfile(tarinfo),
                     file_out,
-                    file_in_is_async=file_out_is_async,
+                    file_in_is_async=False,
+                    file_out_is_async=file_out_is_async,
                 )
                 break
     return result
 
 
-# TODO: Convert to aysnc
 def file_exists_in_tar(file_in, name: str):
     """
     Checks if a file exists in a given tar archive.
@@ -266,17 +264,23 @@ def file_exists_in_tar(file_in, name: str):
     return False
 
 
-async def gunzip(path: Path, file_out) -> UtilChunkFile:
+async def gunzip(path: Path, file_out, file_out_is_async: bool = True) -> UtilChunkFile:
     """
     Uncompresses a given gzip archive.
 
     Args:
         path: Path to the gzipped file.
         file_out: The output file.
+        file_out_is_async: If True, all file_out IO operations will be awaited.
 
     Returns:
         dict: as defined by :func:~docker_sign_verify.Utils._chunk_file.
     """
     # TODO: Implement an async GzipFile ...
     with gzip.GzipFile(filename=path, mode="rb") as file_in:
-        return await chunk_file(file_in, file_out, file_in_is_async=False)
+        return await chunk_file(
+            file_in,
+            file_out,
+            file_in_is_async=False,
+            file_out_is_async=file_out_is_async,
+        )

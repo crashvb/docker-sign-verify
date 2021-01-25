@@ -2,7 +2,7 @@
 
 -include makefile.config
 
-.PHONY: black build clean default deploy purge sign test test_code test_package venv verify
+.PHONY: black build clean default deploy deploy-test purge release sign test test-all test-all-verbose test-code test-package test-verbose venv .venv verify
 
 tmpdir:=$(shell mktemp --directory)
 
@@ -13,27 +13,52 @@ black:
 
 build:
 	python setup.py bdist_wheel sdist
+	tar --file dist/*.tar.gz --list --verbose
+	unzip -l dist/*.whl
+
+deploy: clean build sign
+
+	python -m twine upload dist/*
+
+deploy-test: clean build sign
+	python -m twine upload --repository testpypi dist/*
+
+release:
+	@[ "X$(shell git status --porcelain 2>&1)" = "X" ] || (echo "GIT work tree is dirty!" && /bin/false)
+	$(eval package_name := $(shell sed --expression='s/_/-/g' --expression='s/^.*name="\(.*\)",/\1/p' --quiet setup.py))
+	@echo "Detected package: $(package_name)"
+	$(eval version_current := $(shell sed --expression='s/^__version__ = "\(.*\)"/\1/p' --quiet */__init__.py))
+	@echo "Detected current version as: $(version_current)"
+	$(eval version_release := $(shell echo "$(version_current)" | sed --expression='s/.dev0//g'))
+	@echo "Setting release version to: $(version_release)"
+	@sed --expression='s/"$(version_current)"$$/"$(version_release)"/' --in-place */__init__.py
+	@git commit --all --message "prepare release $(package_name)-$(version_release)"
+	@git tag --message="release $(package_name)-$(version_release)" --sign "$(package_name)-$(version_release)"
+
+	$(eval version_next := $(shell echo "$(version_release)" | awk --field-separator=. --assign OFS=. 'NF==1{print ++$$NF}; NF>1{$$NF=sprintf("%0*d", length($$NF), ($$NF+1)); print}'))
+	$(eval version_next := $(version_next).dev0)
+	@echo "Setting next version to: $(version_next)"
+	@sed --expression='s/"$(version_release)"$$/"$(version_next)"/' --in-place */__init__.py
+	@git commit --all --message "prepare for next development iteration"
+
 
 sign:
 	find dist -type f \( -iname "*.tar.gz" -o -iname "*.whl" \) -exec gpg --armor --detach-sig --sign {} \;
 
-verify:
-	find dist -type f -iname "*.asc" -exec gpg --verify {} \;
-
 test:
 	python -m pytest --log-cli-level info $(args)
 
-test_all:
+test-all:
 	python -m pytest --log-cli-level info --allow-online-modification $(args)
 
-test_all_verbose:
-	python -m pytest -r sx --log-cli-level debug --allow-online-modification $(args)
+test-all-verbose:
+	python -m pytest --log-cli-level debug --allow-online-modification $(args)
 
-test_code:
+test-code:
 	# Note: https://github.com/PyCQA/pylint/issues/289
 	python -m pylint --disable C0330,R0801 --max-line-length=120 docker_sign_verify tests
 
-test_package: build
+test-package: build
 	python -m venv $(tmpdir)
 
 	cd /tmp
@@ -41,11 +66,8 @@ test_package: build
 	$(tmpdir)/bin/python -m pytest
 	rm --force --recursive $(tmpdir)
 
-deploy: clean build sign
-	python -m twine upload dist/*
-
-deploy_test: clean build sign
-	python -m twine upload --repository testpypi dist/*
+test-verbose:
+	python -m pytest -r sx --log-cli-level debug $(args)
 
 .venv:
 	python -m venv .venv
@@ -53,6 +75,9 @@ deploy_test: clean build sign
 	.venv/bin/python -m pip install --editable .[dev]
 
 venv: .venv
+
+verify:
+	find dist -type f -iname "*.asc" -exec gpg --verify {} \;
 
 clean:
 	rm --force --recursive .eggs build dist *.egg-info

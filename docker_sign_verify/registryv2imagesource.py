@@ -5,7 +5,6 @@
 import logging
 import os
 
-from copy import deepcopy
 from typing import cast, List
 
 from docker_registry_client_async import (
@@ -44,10 +43,6 @@ class RegistryV2ImageSource(ImageSource):
     PLATFORM_OS = os.environ.get("DSV_OPERATING_SYSTEM", "linux")
 
     def __init__(self, **kwargs):
-        """
-        Args:
-            credentials_store: Path to the docker registry credentials store.
-        """
         super().__init__(**kwargs)
         kwargs.pop("dry_run", None)
         self.docker_registry_client_async = DockerRegistryClientAsync(**kwargs)
@@ -98,6 +93,7 @@ class RegistryV2ImageSource(ImageSource):
         )
         return response["result"]
 
+    @ImageSource.check_dry_run
     async def put_image(
         self,
         image_source,
@@ -113,14 +109,12 @@ class RegistryV2ImageSource(ImageSource):
         for i, manifest_layer in enumerate(manifest_layers):
             if not await self.layer_exists(image_name, manifest_layer, **kwargs):
                 if isinstance(image_source, RegistryV2ImageSource):
-                    await image_source.put_image_layer_from_disk(
+                    await self.put_image_layer_from_disk(
                         image_name, layer_files[i], **kwargs
                     )
                 else:
                     raise NotImplementedError(
-                        "Translation from '{0}' to '{1}' is not supported!".format(
-                            type(image_source), type(self)
-                        )
+                        f"Translation from '{type(image_source)}' to '{type(self)}' is not supported!"
                     )
 
         # Replicate the image configuration ...
@@ -133,9 +127,7 @@ class RegistryV2ImageSource(ImageSource):
             await self.put_manifest(manifest, image_name, **kwargs)
         else:
             raise NotImplementedError(
-                "Translation from '{0}' to '{1}' is not supported!".format(
-                    type(image_source), type(self)
-                )
+                f"Translation from '{type(image_source)}' to '{type(self)}' is not supported!"
             )
 
     @ImageSource.check_dry_run
@@ -203,6 +195,7 @@ class RegistryV2ImageSource(ImageSource):
             src_image_name.resolve_name(),
         )
 
+        dest_image_name = dest_image_name.clone()
         if dest_image_name.resolve_digest():
             dest_image_name.digest = None
             LOGGER.warning(
@@ -220,7 +213,7 @@ class RegistryV2ImageSource(ImageSource):
         LOGGER.debug("    config digest (signed): %s", config_digest)
 
         # Generate a new registry manifest ...
-        manifest = deepcopy(data["verify_image_data"]["manifest"])
+        manifest = data["verify_image_data"]["manifest"].clone()
         manifest = cast(RegistryV2Manifest, manifest)
         manifest.set_config_digest(config_digest, len(image_config.get_bytes()))
         data = cast(ImageSourceSignImage, data)
@@ -259,12 +252,12 @@ class RegistryV2ImageSource(ImageSource):
             must_be_equal(
                 layer,
                 data_compressed["digest"],
-                "Registry layer[{0}] digest mismatch".format(i),
+                f"Registry layer[{i}] digest mismatch",
             )
             must_be_equal(
                 os.path.getsize(compressed_layer_files[i].name),
                 data_compressed["size"],
-                "Registry layer[{0}] size mismatch".format(i),
+                f"Registry layer[{i}] size mismatch",
             )
 
             # Decompress (convert) the registry image layer into the image layer
@@ -276,7 +269,7 @@ class RegistryV2ImageSource(ImageSource):
             must_be_equal(
                 data["image_layers"][i],
                 data_uncompressed["digest"],
-                "Image layer[{0}] digest mismatch".format(i),
+                f"Image layer[{i}] digest mismatch",
             )
 
         LOGGER.debug("Integrity check passed.")

@@ -56,7 +56,7 @@ class RegistryV2Manifest(Manifest):
             OCIMediaTypes.IMAGE_MANIFEST_V1,
         ]:
             raise NotImplementedError(
-                "Unsupported media type: {0}".format(self.get_media_type())
+                f"Unsupported media type: {self.get_media_type()}"
             )
 
         json = self.get_json()
@@ -80,7 +80,7 @@ class RegistryV2Manifest(Manifest):
             OCIMediaTypes.IMAGE_MANIFEST_V1,
         ]:
             raise NotImplementedError(
-                "Unsupported media type: {0}".format(self.get_media_type())
+                f"Unsupported media type: {self.get_media_type()}"
             )
 
         json = self.get_json()
@@ -96,7 +96,7 @@ class RegistryV2Manifest(Manifest):
             OCIMediaTypes.IMAGE_MANIFEST_V1,
         ]:
             raise NotImplementedError(
-                "Unsupported media type: {0}".format(self.get_media_type())
+                f"Unsupported media type: {self.get_media_type()}"
             )
 
         return FormattedSHA256.parse(self.get_json()["config"]["digest"])
@@ -107,7 +107,7 @@ class RegistryV2Manifest(Manifest):
             OCIMediaTypes.IMAGE_MANIFEST_V1,
         ]:
             raise NotImplementedError(
-                "Unsupported media type: {0}".format(self.get_media_type())
+                f"Unsupported media type: {self.get_media_type()}"
             )
 
         return [

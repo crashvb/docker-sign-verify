@@ -42,7 +42,7 @@ class Manifest(abc.ABC, DRCAManifest):
     @abc.abstractmethod
     def get_layers(self, image_name: ImageName = None) -> List[FormattedSHA256]:
         """
-        Retrieves the listing of manifest layer identifiers.
+        Retrieves the list of manifest layer identifiers.
 
         Args:
             image_name: The image name.

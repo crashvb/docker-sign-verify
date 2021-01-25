@@ -2,16 +2,22 @@
 
 """Classes that provide signature functionality."""
 
+import asyncio
 import logging
 import io
 import os
-import tempfile
+import subprocess
+import types
 
 from pathlib import Path
 from typing import Any
 
-import gnupg
+import aiofiles
 
+from gnupg._meta import GPGBase
+from gnupg._parsers import Verify
+
+from .aiotempfile import open as aiotempfile
 from .signer import Signer
 
 LOGGER = logging.getLogger(__name__)
@@ -22,16 +28,12 @@ class GPGSigner(Signer):
     Creates and verifies docker image signatures using GnuPG.
     """
 
-    HOMEDIR = Path(os.environ.get("DSV_GPG_DATASTORE", Path.home().joinpath(".gnupg")))
-    OPTIONS = os.environ.get("DSV_GPG_OPTIONS", "--pinentry-mode loopback")
-
     def __init__(
         self,
         *,
         keyid: str = None,
         passphrase: str = None,
         homedir: Path = None,
-        **kwargs
     ):
         """
         Args:
@@ -41,64 +43,142 @@ class GPGSigner(Signer):
         """
         self.keyid = keyid
         self.passphrase = passphrase
-        self.homedir = homedir if homedir else GPGSigner.HOMEDIR
+        self.homedir = homedir
+        if not self.homedir:
+            gpg_datastore = os.environ.get("DSV_GPG_DATASTORE")
+            if gpg_datastore:
+                self.homedir = Path(gpg_datastore)
+        if not self.homedir:
+            self.homedir = Path.home().joinpath(".gnupg")
+            LOGGER.warning("Using default GNUPGHOME: %s", self.homedir)
+        self.homedir = Path(self.homedir)
 
         LOGGER.debug("Using trust store: %s", self.homedir)
-        self.gpg = gnupg.GPG(
-            homedir=self.homedir,
-            ignore_homedir_permissions=True,
-            options=[GPGSigner.OPTIONS],
-            **kwargs
-        )
 
-    async def _debug_init_store(
-        self, name: str = "DSV Test Key", email: str = "test@key.com"
-    ):
+    @staticmethod
+    async def _parse_status(status: bytes) -> Verify:
         """
-        Initializes a new GPG keystore for testing purposes.
+        Invoke the GnuPG library parsing for status.
 
         Args:
-            name: GPG identity name used to create the new key.
-            email: GPG identity email used to create the new key.
+            status: Status from GnuPG.
 
         Returns:
-            The GPG key identifier of the newly created key.
+            The gnupg._parsers.Verify object.
         """
-        input_data = self.gpg.gen_key_input(
-            name_email=name, name_real=email, passphrase=self.passphrase
+        # DUCK PUNCH:
+        # * Define a dummy class that doesn't do all the crap that GPGBase.__init__ does.
+        # * Borrow the GPGBase._read_response method.
+        class Dummy:
+            # pylint: disable=missing-class-docstring,too-few-public-methods
+            verbose: False
+
+        # pylint: disable=protected-access
+        setattr(
+            Dummy,
+            GPGBase._read_response.__name__,
+            types.MethodType(GPGBase._read_response, Dummy),
         )
 
-        result = self.gpg.gen_key(input_data)
-        if not result:
-            LOGGER.warning("GPG keystore generation failed!")
-        self.keyid = str(result)
-
+        result = Verify(None)
+        # pylint: disable=no-member
+        Dummy()._read_response(
+            io.TextIOWrapper(io.BytesIO(status), encoding="utf-8"), result
+        )
         return result
 
     # Signer Members
 
-    # TODO: Convert to async
     async def sign(self, data: bytes) -> str:
         if not self.keyid:
-            LOGGER.warning("Signing using implicit / default keyid!")
-            # raise RuntimeError("Cannot sign without keyid!")
+            raise RuntimeError("Cannot sign without keyid!")
+        if not self.passphrase or len(self.passphrase) < 1:
+            raise RuntimeError("Refusing to use an unprotected key!")
 
-        kwargs = {}
-        if self.keyid:
-            kwargs = {"default_key": self.keyid}
+        # Write the data to a temporary file and invoke GnuPG to create a detached signature ...
+        signaturefile = None
+        async with aiotempfile(mode="w+b") as datafile:
+            signaturefile = Path(f"{datafile.name}.asc")
 
-        result = self.gpg.sign(
-            data, clearsign=False, detach=True, passphrase=self.passphrase, **kwargs
-        )
+            # Write the data to a temporary file
+            await datafile.write(data)
+            await datafile.flush()
 
-        return str(result).rstrip()
+            args = [
+                "gpg",
+                "--no-options",
+                "--no-emit-version",
+                "--no-tty",
+                "--status-fd",
+                "2",
+                "--homedir",
+                str(self.homedir),
+                "--batch",
+                "--passphrase-fd",
+                "0",
+                "--sign",
+                "--armor",
+                "--detach-sign",
+                "--default-key",
+                str(self.keyid),
+                "--digest-algo",
+                "SHA512",
+                "--pinentry-mode",
+                "loopback",
+                datafile.name,
+            ]
 
-    # TODO: Convert to async
+            process = await asyncio.create_subprocess_exec(
+                *args,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            stdout, stderr = await process.communicate(self.passphrase.encode("utf-8"))
+            if process.returncode:
+                LOGGER.debug(
+                    "Command Failed:\nArgs: %s\n---stdout---\n%s\n---stderr---\n%s",
+                    " ".join(args),
+                    stdout.decode("utf-8"),
+                    stderr.decode("utf-8"),
+                )
+                return ""
+
+        # Retrieve the detached signature and cleanup ...
+        try:
+            async with aiofiles.open(signaturefile) as tmpfile:
+                return await tmpfile.read()
+        finally:
+            signaturefile.unlink(missing_ok=True)
+
     async def verify(self, data: bytes, signature: str) -> Any:
-        # Note: gnupg.py:verify_file() forces sig_file to be on disk, as the
-        #       underlying gpg utility does the same =(
-        with tempfile.NamedTemporaryFile() as tmpfile:
-            tmpfile.write(signature.encode("utf-8"))
-            tmpfile.flush()
-            os.fsync(tmpfile.fileno())
-            return self.gpg.verify_file(io.BytesIO(data), tmpfile.name)
+        # Write the data and signature to temporary files and invoke GnuPG to verify they match ...
+        async with aiotempfile(mode="w+b") as datafile:
+            await datafile.write(data)
+            await datafile.flush()
+            async with aiotempfile(mode="w+b") as signaturefile:
+                await signaturefile.write(signature.encode("utf-8"))
+                await signaturefile.flush()
+
+                args = [
+                    "gpg",
+                    "--no-options",
+                    "--no-emit-version",
+                    "--no-tty",
+                    "--status-fd",
+                    "2",
+                    "--homedir",
+                    str(self.homedir),
+                    "--batch",
+                    "--verify",
+                    signaturefile.name,
+                    datafile.name,
+                ]
+
+                process = await asyncio.create_subprocess_exec(
+                    *args, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                )
+                _, stderr = await process.communicate()
+                result = await GPGSigner._parse_status(stderr)
+
+                return result

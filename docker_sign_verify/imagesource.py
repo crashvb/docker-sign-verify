@@ -13,14 +13,13 @@ import gnupg  # Needed for type checking
 
 from aiofiles.base import AiofilesContextManager
 from docker_registry_client_async import FormattedSHA256, ImageName
-from docker_registry_client_async.typing import UtilsChunkToFile
 from docker_registry_client_async.utils import must_be_equal
 
 from .exceptions import SignatureMismatchError
 from .imageconfig import ImageConfig, SignatureTypes
 from .manifest import Manifest
 from .signer import Signer
-from .utils import xellipsis
+from .utils import UtilChunkFile, xellipsis
 
 LOGGER = logging.getLogger(__name__)
 
@@ -48,7 +47,7 @@ class ImageSourceVerifyImageConfig(TypedDict):
     manifest_layers: List[FormattedSHA256]
 
 
-class ImageSourceGetImageLayerToDisk(UtilsChunkToFile):
+class ImageSourceGetImageLayerToDisk(UtilChunkFile):
     # pylint: disable=missing-class-docstring
     pass
 
@@ -68,7 +67,7 @@ class ImageSource(abc.ABC):
     Abstract source of docker images.
     """
 
-    def __init__(self, *, dry_run: bool = False):
+    def __init__(self, *, dry_run: bool = False, **kwargs):
         """
         Args:
             dry_run: If true, destination image sources will not be changed.
@@ -157,7 +156,9 @@ class ImageSource(abc.ABC):
             "    config digest (canonical): %s", xellipsis(config_digest_canonical)
         )
         must_be_equal(
-            config_digest, image_config.get_digest(), "Image config digest mismatch",
+            config_digest,
+            image_config.get_digest(),
+            "Image config digest mismatch",
         )
 
         # Retrieve the image layers from the image configuration ...
@@ -380,7 +381,7 @@ class ImageSource(abc.ABC):
             if isinstance(result, gnupg._parsers.Verify):
                 if not result.valid:
                     raise SignatureMismatchError(
-                        "Verification failed for signature with key_id '{0}': {1}".format(
+                        "Verification failed for signature with keyid '{0}': {1}".format(
                             result.key_id, result.status
                         )
                     )

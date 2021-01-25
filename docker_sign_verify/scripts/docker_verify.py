@@ -35,9 +35,9 @@ LOGGER = logging.getLogger(__name__)
 class TypingContextObject(TypedDict):
     # pylint: disable=missing-class-docstring
     check_signatures: bool
-    verbosity: int
     images: List[ImageName]
     imagesource: ImageSource
+    verbosity: int
 
 
 def get_context_object(context: Context) -> TypingContextObject:
