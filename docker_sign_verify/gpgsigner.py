@@ -14,10 +14,10 @@ from typing import Any
 
 import aiofiles
 
+from aiotempfile.aiotempfile import open as aiotempfile
 from gnupg._meta import GPGBase
 from gnupg._parsers import Verify
 
-from .aiotempfile import open as aiotempfile
 from .signer import Signer
 
 LOGGER = logging.getLogger(__name__)

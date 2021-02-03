@@ -13,6 +13,7 @@ from pathlib import Path
 import aiofiles
 import pytest
 
+from aiotempfile.aiotempfile import open as aiotempfile
 from docker_registry_client_async import (
     DockerAuthentication,
     DockerMediaTypes,
@@ -32,7 +33,6 @@ from docker_sign_verify import (
     RegistryV2Manifest,
     SignatureTypes,
 )
-from docker_sign_verify.aiotempfile import open as aiotempfile
 from docker_sign_verify.imagesource import (
     ImageSourceSignImage,
     ImageSourceVerifyImageIntegrity,
@@ -137,6 +137,7 @@ async def replicate_manifest_lists(docker_registry_secure: DockerRegistrySecure)
                 )
 
 
+@pytest.mark.online
 def test___init__(registry_v2_image_source: RegistryV2ImageSource):
     """Test that the image source can be instantiated."""
     assert registry_v2_image_source

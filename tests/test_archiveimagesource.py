@@ -14,6 +14,7 @@ from typing import Dict
 import aiofiles
 import pytest
 
+from aiotempfile.aiotempfile import open as aiotempfile
 from docker_registry_client_async import FormattedSHA256, ImageName
 from docker_sign_verify import (
     ArchiveImageSource,
@@ -21,7 +22,6 @@ from docker_sign_verify import (
     ImageConfig,
     SignatureTypes,
 )
-from docker_sign_verify.aiotempfile import open as aiotempfile
 from docker_sign_verify.imagesource import (
     ImageSourceSignImage,
     ImageSourceVerifyImageIntegrity,
