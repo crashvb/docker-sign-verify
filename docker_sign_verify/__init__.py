@@ -18,4 +18,4 @@ from .registryv2manifestlist import RegistryV2ManifestList
 from .signer import Signer
 from .specs import SignatureTypes
 
-__version__ = "1.0.2.dev0"
+__version__ = "1.0.2"
