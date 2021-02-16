@@ -54,6 +54,7 @@ setup(
     install_requires=[
         "aiofiles",
         "aiohttp",
+        "aiotempfile",
         "canonicaljson",
         "docker-registry-client-async>=0.1.4",
         "click",

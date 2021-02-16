@@ -11,10 +11,10 @@ import tarfile
 from typing import cast, List
 from pathlib import Path
 
+from aiotempfile.aiotempfile import open as aiotempfile
 from docker_registry_client_async import FormattedSHA256, ImageName
 from docker_registry_client_async.utils import must_be_equal
 
-from .aiotempfile import open as aiotempfile
 from .archivemanifest import ArchiveChangeset, ArchiveManifest, ArchiveRepositories
 from .imageconfig import ImageConfig, SignatureTypes
 from .imagesource import (

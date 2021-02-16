@@ -7,6 +7,7 @@ import os
 
 from typing import cast, List
 
+from aiotempfile.aiotempfile import open as aiotempfile
 from docker_registry_client_async import (
     DockerRegistryClientAsync,
     FormattedSHA256,
@@ -18,7 +19,6 @@ from docker_registry_client_async.typing import (
 )
 from docker_registry_client_async.utils import must_be_equal
 
-from .aiotempfile import open as aiotempfile
 from .imageconfig import ImageConfig, SignatureTypes
 from .imagesource import (
     ImageSource,

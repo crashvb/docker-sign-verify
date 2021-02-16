@@ -16,7 +16,12 @@ from docker_sign_verify.scripts.docker_copy import cli
 from docker_sign_verify.scripts.docker_sign import cli as cli_signer
 
 from .conftest import _pytestmark, TypingKnownGoodImage
-from .testutils import ca_trust_store, gpg_datastore, hybrid_trust_store, registry_credentials
+from .testutils import (
+    ca_trust_store,
+    gpg_datastore,
+    hybrid_trust_store,
+    registry_credentials,
+)
 from .test_gpgsigner import gpgsigner  # Needed for pytest
 
 LOGGER = logging.getLogger(__name__)
