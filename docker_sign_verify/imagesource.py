@@ -7,7 +7,7 @@ import logging
 import time
 
 from functools import wraps
-from typing import Any, cast, List, Optional, NamedTuple
+from typing import Any, List, Optional, NamedTuple
 
 import gnupg  # Needed for type checking
 
@@ -19,7 +19,7 @@ from .exceptions import SignatureMismatchError
 from .imageconfig import ImageConfig, SignatureTypes
 from .manifest import Manifest
 from .signer import Signer
-from .utils import UtilChunkFile, xellipsis
+from .utils import xellipsis
 
 LOGGER = logging.getLogger(__name__)
 
@@ -30,6 +30,11 @@ class ImageSourceVerifyImageIntegrity(NamedTuple):
     image_config: ImageConfig
     manifest: Manifest
     uncompressed_layer_files: List[AiofilesContextManager]
+
+    def close(self):
+        """Cleanup temporary files."""
+        for file in self.compressed_layer_files + self.uncompressed_layer_files:
+            file.close()
 
 
 class ImageSourceSignImageConfig(NamedTuple):
@@ -68,6 +73,11 @@ class ImageSourceVerifyImageSignatures(NamedTuple):
     manifest: Manifest
     signatures: Any
     uncompressed_layer_files: List[AiofilesContextManager]
+
+    def close(self):
+        """Cleanup temporary files."""
+        for file in self.compressed_layer_files + self.uncompressed_layer_files:
+            file.close()
 
 
 class ImageSource(abc.ABC):
@@ -118,13 +128,17 @@ class ImageSource(abc.ABC):
         """
         # Verify image integrity (we use the verified values from this point on)
         data = await self.verify_image_integrity(image_name, **kwargs)
-        image_config = data.image_config
 
         # Perform the desired signing operation
-        signature_value = await image_config.sign(signer, signature_type)
+        try:
+            signature_value = await data.image_config.sign(signer, signature_type)
+        except Exception:
+            for file in data.compressed_layer_files + data.uncompressed_layer_files:
+                file.close()
+            raise
 
         return ImageSourceSignImageConfig(
-            image_config=image_config,
+            image_config=data.image_config,
             signature_value=signature_value,
             verify_image_data=data,
         )
@@ -369,54 +383,60 @@ class ImageSource(abc.ABC):
         """
 
         # Verify image integrity (we use the verified values from this point on)
-        integrity_data = await self.verify_image_integrity(image_name, **kwargs)
+        data = await self.verify_image_integrity(image_name, **kwargs)
 
         # Verify image signatures ...
-        LOGGER.debug("Verifying Signature(s): %s ...", image_name.resolve_name())
-        LOGGER.debug(
-            "    config digest (signed): %s",
-            xellipsis(integrity_data.image_config.get_digest()),
-        )
-        signatures = await integrity_data.image_config.verify_signatures()
-        integrity_data = ImageSourceVerifyImageSignatures(
-            compressed_layer_files=integrity_data.compressed_layer_files,
-            image_config=integrity_data.image_config,
-            manifest=integrity_data.manifest,
-            signatures=signatures,
-            uncompressed_layer_files=integrity_data.uncompressed_layer_files,
-        )
+        try:
+            LOGGER.debug("Verifying Signature(s): %s ...", image_name.resolve_name())
+            LOGGER.debug(
+                "    config digest (signed): %s",
+                xellipsis(data.image_config.get_digest()),
+            )
+            signatures = await data.image_config.verify_signatures()
+            data = ImageSourceVerifyImageSignatures(
+                compressed_layer_files=data.compressed_layer_files,
+                image_config=data.image_config,
+                manifest=data.manifest,
+                signatures=signatures,
+                uncompressed_layer_files=data.uncompressed_layer_files,
+            )
 
-        # List the image signatures ...
-        LOGGER.debug("    signatures:")
-        for result in integrity_data.signatures.results:
-            # pylint: disable=protected-access
-            if isinstance(result, gnupg._parsers.Verify):
-                if not result.valid:
-                    raise SignatureMismatchError(
-                        "Verification failed for signature with keyid '{0}': {1}".format(
-                            result.key_id, result.status
+            # List the image signatures ...
+            LOGGER.debug("    signatures:")
+            for result in data.signatures.results:
+                # pylint: disable=protected-access
+                if isinstance(result, gnupg._parsers.Verify):
+                    if not result.valid:
+                        raise SignatureMismatchError(
+                            "Verification failed for signature with keyid '{0}': {1}".format(
+                                result.key_id, result.status
+                            )
                         )
+                    LOGGER.debug(
+                        "        Signature made %s using key ID %s",
+                        time.strftime(
+                            "%Y-%m-%d %H:%M:%S",
+                            time.gmtime(float(result.sig_timestamp)),
+                        ),
+                        result.key_id,
                     )
-                LOGGER.debug(
-                    "        Signature made %s using key ID %s",
-                    time.strftime(
-                        "%Y-%m-%d %H:%M:%S", time.gmtime(float(result.sig_timestamp))
-                    ),
-                    result.key_id,
-                )
-                LOGGER.debug("            %s", result.username)
-            elif result.get("type", None) == "pki":
-                if not result["valid"]:
-                    raise SignatureMismatchError(
-                        "Verification failed for signature using cert: {0}".format(
-                            result["keypair_path"]
+                    LOGGER.debug("            %s", result.username)
+                elif result.get("type", None) == "pki":
+                    if not result["valid"]:
+                        raise SignatureMismatchError(
+                            "Verification failed for signature using cert: {0}".format(
+                                result["keypair_path"]
+                            )
                         )
-                    )
-                # TODO: Add better debug logging
-                LOGGER.debug("        Signature made using undetailed PKI keypair.")
-            else:
-                LOGGER.error("Unknown Signature Type: %s", type(result))
+                    # TODO: Add better debug logging
+                    LOGGER.debug("        Signature made using undetailed PKI keypair.")
+                else:
+                    LOGGER.error("Unknown Signature Type: %s", type(result))
+        except Exception:
+            for file in data.compressed_layer_files + data.uncompressed_layer_files:
+                file.close()
+            raise
 
         LOGGER.debug("Signature check passed.")
 
-        return integrity_data
+        return data

@@ -97,7 +97,6 @@ async def sign(context: Context) -> ImageSourceSignImage:
     """Signs an image."""
 
     result = None
-
     ctx = get_context_object(context)
     try:
         if ctx["sigtype"] == "gpg" and ("." in ctx["keyid"] or "/" in ctx["keyid"]):
@@ -143,8 +142,8 @@ async def sign(context: Context) -> ImageSourceSignImage:
         sys.exit(1)
     finally:
         await ctx["imagesource"].close()
-
-    return result
+        if result:
+            result.verify_image_data.close()
 
 
 @click.group()

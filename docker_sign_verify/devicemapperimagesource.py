@@ -266,17 +266,22 @@ class DeviceMapperRepositoryImageSource(ImageSource):
 
         # Reconcile manifest layers and image layers (in order)...
         uncompressed_layer_files = []
-        for i, layer in enumerate(data.manifest_layers):
-            # Retrieve the repository image layer and verify the digest ...
-            uncompressed_layer_files.append(tempfile.NamedTemporaryFile())
-            data_compressed = await self.get_image_layer_to_disk(
-                image_name, layer, uncompressed_layer_files[i]
-            )
-            must_be_equal(
-                data.image_layers[i],
-                data_compressed.digest,
-                f"Repository layer[{i}] digest mismatch",
-            )
+        try:
+            for i, layer in enumerate(data.manifest_layers):
+                # Retrieve the repository image layer and verify the digest ...
+                uncompressed_layer_files.append(tempfile.NamedTemporaryFile())
+                data_compressed = await self.get_image_layer_to_disk(
+                    image_name, layer, uncompressed_layer_files[i]
+                )
+                must_be_equal(
+                    data.image_layers[i],
+                    data_compressed.digest,
+                    f"Repository layer[{i}] digest mismatch",
+                )
+        except Exception:
+            # for file in uncompressed_layer_files:
+            #     file.close()
+            raise
 
         LOGGER.debug("Integrity check passed.")
 

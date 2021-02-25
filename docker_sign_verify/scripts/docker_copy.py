@@ -68,6 +68,7 @@ def copy_options(function):
 async def copy(context: Context):
     """Copies and image."""
 
+    result = None
     ctx = get_context_object(context)
     try:
         ctx_verify = cast(DockerVerifyTypingContextObject, ctx)
@@ -104,6 +105,8 @@ async def copy(context: Context):
         sys.exit(1)
     finally:
         await ctx["imagesource"].close()
+        if result:
+            result.close()
 
 
 @click.group()

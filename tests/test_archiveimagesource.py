@@ -93,7 +93,9 @@ async def test_get_image_layer_to_disk(
     manifest = await archive_image_source.get_manifest(image_name, **kwargs)
     for layer in manifest.get_layers(image_name):
         LOGGER.debug("Retrieving blob: %s/%s ...", image_name, layer)
-        async with aiotempfile(mode="w+b") as file:
+        async with aiotempfile(
+            mode="w+b", prefix=f"tmp{test_get_image_layer_to_disk.__name__}"
+        ) as file:
             result = await archive_image_source.get_image_layer_to_disk(
                 image_name, layer, file, **kwargs
             )
@@ -182,12 +184,17 @@ async def test_put_image(
     manifest = await archive_image_source_dest.get_manifest(image_name, **kwargs)
     for layer in manifest.get_layers(image_name):
         LOGGER.debug("Retrieving blob: %s/%s ...", image_name, layer)
-        async with aiotempfile(mode="w+b") as file:
+        async with aiotempfile(
+            mode="w+b", prefix=f"tmp{test_put_image.__name__}"
+        ) as file:
             result = await archive_image_source_dest.get_image_layer_to_disk(
                 image_name, layer, file, **kwargs
             )
             LOGGER.debug("Verifying digest of written file ...")
         # TODO: What is the correct digest value?
+
+    for file in response.compressed_layer_files + response.uncompressed_layer_files:
+        file.close()
 
 
 async def test_put_image_config(
@@ -322,16 +329,21 @@ async def test_sign_image_same_image_source(
         assert len(manifest_signed.get_layers()) == len(image_config.get_image_layers())
 
     # 1. Single signature
-    assertions(
-        await archive_image_source.sign_image(
-            FakeSigner(),
-            image_name,
-            archive_image_source,
-            dest_image_name,
-            SignatureTypes.SIGN,
-            **kwargs,
-        )
+    response = await archive_image_source.sign_image(
+        FakeSigner(),
+        image_name,
+        archive_image_source,
+        dest_image_name,
+        SignatureTypes.SIGN,
+        **kwargs,
     )
+    assertions(response)
+
+    for file in (
+        response.verify_image_data.compressed_layer_files
+        + response.verify_image_data.uncompressed_layer_files
+    ):
+        file.close()
 
     # TODO: Test signing image twice (with same key, with different keys ...)
 
@@ -374,16 +386,21 @@ async def test_sign_image_different_image_source(
         assert len(manifest_signed.get_layers()) == len(image_config.get_image_layers())
 
     # 1. Single signature
-    assertions(
-        await archive_image_source_src.sign_image(
-            FakeSigner(),
-            image_name,
-            archive_image_source_dest,
-            dest_image_name,
-            SignatureTypes.SIGN,
-            **kwargs,
-        )
+    response = await archive_image_source_src.sign_image(
+        FakeSigner(),
+        image_name,
+        archive_image_source_dest,
+        dest_image_name,
+        SignatureTypes.SIGN,
+        **kwargs,
     )
+    assertions(response)
+
+    for file in (
+        response.verify_image_data.compressed_layer_files
+        + response.verify_image_data.uncompressed_layer_files
+    ):
+        file.close()
 
     # TODO: Test signing image twice (with same key, with different keys ...)
 
@@ -410,6 +427,10 @@ async def test_verify_image_integrity(
         # )
 
     # 1. Unsigned
-    assertions(await archive_image_source.verify_image_integrity(image_name, **kwargs))
+    response = await archive_image_source.verify_image_integrity(image_name, **kwargs)
+    assertions(response)
+
+    for file in response.compressed_layer_files + response.uncompressed_layer_files:
+        file.close()
 
     # TODO: Test integrity on a signed image ...

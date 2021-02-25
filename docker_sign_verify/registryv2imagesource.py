@@ -249,36 +249,43 @@ class RegistryV2ImageSource(ImageSource):
         # Reconcile manifest layers and image layers (in order)...
         compressed_layer_files = []
         uncompressed_layer_files = []
-        for i, layer in enumerate(data.manifest_layers):
-            # Retrieve the registry image layer and verify the digest ...
-            compressed_layer_files.append(await aiotempfile(prefix="tmp-compressed"))
-            data_compressed = await self.get_image_layer_to_disk(
-                image_name, layer, compressed_layer_files[i], **kwargs
-            )
-            must_be_equal(
-                layer,
-                data_compressed.digest,
-                f"Registry layer[{i}] digest mismatch",
-            )
-            must_be_equal(
-                os.path.getsize(compressed_layer_files[i].name),
-                data_compressed.size,
-                f"Registry layer[{i}] size mismatch",
-            )
+        try:
+            for i, layer in enumerate(data.manifest_layers):
+                # Retrieve the registry image layer and verify the digest ...
+                compressed_layer_files.append(
+                    await aiotempfile(prefix="tmp-compressed")
+                )
+                data_compressed = await self.get_image_layer_to_disk(
+                    image_name, layer, compressed_layer_files[i], **kwargs
+                )
+                must_be_equal(
+                    layer,
+                    data_compressed.digest,
+                    f"Registry layer[{i}] digest mismatch",
+                )
+                must_be_equal(
+                    os.path.getsize(compressed_layer_files[i].name),
+                    data_compressed.size,
+                    f"Registry layer[{i}] size mismatch",
+                )
 
-            # Decompress (convert) the registry image layer into the image layer
-            # and verify the digest ...
-            uncompressed_layer_files.append(
-                await aiotempfile(prefix="tmp-uncompressed")
-            )
-            data_uncompressed = await gunzip(
-                compressed_layer_files[i].name, uncompressed_layer_files[i]
-            )
-            must_be_equal(
-                data.image_layers[i],
-                data_uncompressed.digest,
-                f"Image layer[{i}] digest mismatch",
-            )
+                # Decompress (convert) the registry image layer into the image layer
+                # and verify the digest ...
+                uncompressed_layer_files.append(
+                    await aiotempfile(prefix="tmp-uncompressed")
+                )
+                data_uncompressed = await gunzip(
+                    compressed_layer_files[i].name, uncompressed_layer_files[i]
+                )
+                must_be_equal(
+                    data.image_layers[i],
+                    data_uncompressed.digest,
+                    f"Image layer[{i}] digest mismatch",
+                )
+        except Exception:
+            for file in compressed_layer_files + uncompressed_layer_files:
+                file.close()
+            raise
 
         LOGGER.debug("Integrity check passed.")
 

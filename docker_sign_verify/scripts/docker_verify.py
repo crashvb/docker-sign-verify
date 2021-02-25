@@ -87,7 +87,6 @@ async def verify(context: Context) -> List[ImageSourceVerifyImageSignatures]:
     """Verifies an image(s)."""
 
     results = []
-
     ctx = get_context_object(context)
     try:
         results = await _verify(ctx)
@@ -100,8 +99,8 @@ async def verify(context: Context) -> List[ImageSourceVerifyImageSignatures]:
         sys.exit(1)
     finally:
         await ctx["imagesource"].close()
-
-    return results
+        for result in results:
+            result.close()
 
 
 @click.group()

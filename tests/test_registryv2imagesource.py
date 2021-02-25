@@ -175,7 +175,9 @@ async def test_get_image_layer_to_disk(
     LOGGER.debug(
         "Retrieving blob: %s/%s ...", known_good_image["image_name"], config_digest
     )
-    async with aiotempfile(mode="w+b") as file:
+    async with aiotempfile(
+        mode="w+b", prefix=f"tmp{test_get_image_layer_to_disk.__name__}"
+    ) as file:
         result = await registry_v2_image_source.get_image_layer_to_disk(
             known_good_image["image_name"], config_digest, file, **kwargs
         )
@@ -268,6 +270,9 @@ async def test_put_image(
         response.compressed_layer_files,
         **kwargs,
     )
+
+    for file in response.compressed_layer_files + response.uncompressed_layer_files:
+        file.close()
 
 
 @pytest.mark.online_modification
@@ -424,16 +429,21 @@ async def test_sign_image_same_image_source(
         assert len(manifest_signed.get_layers()) == len(image_config.get_image_layers())
 
     # 1. Single signature
-    assertions(
-        await registry_v2_image_source.sign_image(
-            FakeSigner(),
-            known_good_image["image_name"],
-            registry_v2_image_source,
-            dest_image_name,
-            SignatureTypes.SIGN,
-            **kwargs,
-        )
+    response = await registry_v2_image_source.sign_image(
+        FakeSigner(),
+        known_good_image["image_name"],
+        registry_v2_image_source,
+        dest_image_name,
+        SignatureTypes.SIGN,
+        **kwargs,
     )
+    assertions(response)
+
+    for file in (
+        response.verify_image_data.compressed_layer_files
+        + response.verify_image_data.uncompressed_layer_files
+    ):
+        file.close()
 
     # TODO: Test signing image twice (with same key, with different keys ...)
     #       Can we do this here (using dockerhub), or do we need to do this in test_imageconfig.py???
@@ -464,11 +474,13 @@ async def test_verify_image_integrity(
         )
 
     # 1. Unsigned
-    assertions(
-        await registry_v2_image_source.verify_image_integrity(
-            known_good_image["image_name"], **kwargs
-        )
+    response = await registry_v2_image_source.verify_image_integrity(
+        known_good_image["image_name"], **kwargs
     )
+    assertions(response)
+
+    for file in response.compressed_layer_files + response.uncompressed_layer_files:
+        file.close()
 
     # TODO: Test integrity on a signed image ...
     #       Can we do this here (using dockerhub), or do we need to do this in test_imageconfig.py???
