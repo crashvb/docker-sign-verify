@@ -6,6 +6,8 @@
 
 import logging
 
+from pathlib import Path
+
 import pytest
 
 from _pytest.logging import LogCaptureFixture
@@ -76,7 +78,7 @@ def test_invalid_keyid(
 
         caplog.clear()
 
-        with gpg_datastore("/dev/null"):
+        with gpg_datastore(Path("/dev/null")):
             result = runner.invoke(cli, args=["registry", str(destination)])
             assert result.exception
             assert "Integrity check passed." in caplog.text

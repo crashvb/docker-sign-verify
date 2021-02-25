@@ -13,7 +13,7 @@ import tempfile
 import time
 
 from pathlib import Path
-from typing import TypedDict
+from typing import NamedTuple
 
 import aiofiles
 
@@ -30,7 +30,7 @@ LOGGER = logging.getLogger(__name__)
 CHUNK_SIZE = int(os.environ.get("DSV_CHUNK_SIZE", DRCA_CHUNK_SIZE))
 
 
-class UtilChunkFile(TypedDict):
+class UtilChunkFile(NamedTuple):
     # pylint: disable=missing-class-docstring
     digest: FormattedSHA256
     size: int
@@ -69,7 +69,7 @@ async def chunk_file(
 
     await be_kind_rewind(file_out, file_is_async=file_out_is_async)
 
-    return {"digest": FormattedSHA256(hasher.hexdigest()), "size": size}
+    return UtilChunkFile(digest=FormattedSHA256(hasher.hexdigest()), size=size)
 
 
 def xellipsis(string: str) -> str:

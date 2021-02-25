@@ -168,15 +168,15 @@ async def test_put_image(
     await archive_image_source_dest.put_image(
         archive_image_source_src,
         image_name,
-        response["manifest"],
-        response["image_config"],
-        response["uncompressed_layer_files"],
+        response.manifest,
+        response.image_config,
+        response.uncompressed_layer_files,
         **kwargs,
     )
 
     LOGGER.debug("Retrieving image configuration for: %s ...", image_name)
     tmp = await archive_image_source_dest.get_image_config(image_name, **kwargs)
-    assert tmp.get_digest() == response["image_config"].get_digest()
+    assert tmp.get_digest() == response.image_config.get_digest()
 
     LOGGER.debug("Retrieving manifest for: %s ...", image_name)
     manifest = await archive_image_source_dest.get_manifest(image_name, **kwargs)
@@ -301,22 +301,22 @@ async def test_sign_image_same_image_source(
     def assertions(result: ImageSourceSignImage):
         assert result
 
-        image_config = result["image_config"]
+        image_config = result.image_config
         assert image_config
         assert "FAKE SIGNATURE" in str(image_config)
 
-        signature_value = result["signature_value"]
+        signature_value = result.signature_value
         assert signature_value
         assert "FAKE SIGNATURE" in signature_value
 
-        verify_image_data = result["verify_image_data"]
+        verify_image_data = result.verify_image_data
         assert verify_image_data
-        assert image_config == verify_image_data["image_config"]
+        assert image_config == verify_image_data.image_config
 
-        manifest = verify_image_data["manifest"]
+        manifest = verify_image_data.manifest
         assert manifest
 
-        manifest_signed = result["manifest_signed"]
+        manifest_signed = result.manifest_signed
         assert manifest_signed
         assert manifest_signed.get_config_digest() == image_config.get_digest()
         assert len(manifest_signed.get_layers()) == len(image_config.get_image_layers())
@@ -353,22 +353,22 @@ async def test_sign_image_different_image_source(
     def assertions(result: ImageSourceSignImage):
         assert result
 
-        image_config = result["image_config"]
+        image_config = result.image_config
         assert image_config
         assert "FAKE SIGNATURE" in str(image_config)
 
-        signature_value = result["signature_value"]
+        signature_value = result.signature_value
         assert signature_value
         assert "FAKE SIGNATURE" in signature_value
 
-        verify_image_data = result["verify_image_data"]
+        verify_image_data = result.verify_image_data
         assert verify_image_data
-        assert image_config == verify_image_data["image_config"]
+        assert image_config == verify_image_data.image_config
 
-        manifest = verify_image_data["manifest"]
+        manifest = verify_image_data.manifest
         assert manifest
 
-        manifest_signed = result["manifest_signed"]
+        manifest_signed = result.manifest_signed
         assert manifest_signed
         assert manifest_signed.get_config_digest() == image_config.get_digest()
         assert len(manifest_signed.get_layers()) == len(image_config.get_image_layers())
@@ -398,10 +398,10 @@ async def test_verify_image_integrity(
     def assertions(result: ImageSourceVerifyImageIntegrity):
         assert result
 
-        image_config = result["image_config"]
+        image_config = result.image_config
         assert image_config
 
-        manifest = result["manifest"]
+        manifest = result.manifest
         assert manifest
 
         # TODO: Uncomment if / when archive image source supports this ...

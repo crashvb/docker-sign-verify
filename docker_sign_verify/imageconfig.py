@@ -10,7 +10,7 @@ https://github.com/moby/moby/blob/master/image/spec/v1.md
 import json
 import logging
 
-from typing import Any, Dict, List, TypedDict
+from typing import Any, Dict, List, NamedTuple
 
 import canonicaljson
 
@@ -28,13 +28,13 @@ from .specs import SignatureTypes
 LOGGER = logging.getLogger(__name__)
 
 
-class ImageConfigSignatureEntry(TypedDict):
+class ImageConfigSignatureEntry(NamedTuple):
     # pylint: disable=missing-class-docstring
     digest: FormattedSHA256
     signature: str
 
 
-class ImageConfigVerifySignatures(TypedDict):
+class ImageConfigVerifySignatures(NamedTuple):
     # pylint: disable=missing-class-docstring
     signatures: List[ImageConfigSignatureEntry]
     results: List[Any]
@@ -177,11 +177,18 @@ class ImageConfig(JsonBytes):
             The deserialized / unescaped signature list in JSON form.
         """
         labels = ImageConfig._get_labels(self.get_json())
-        return json.loads(
+        signatures = json.loads(
             labels.get(
                 ImageConfig.SIGNATURES_LABEL, ImageConfig.DEFAULT_SIGNATURES_VALUE
             )
         )
+        signatures = [
+            ImageConfigSignatureEntry(
+                digest=signature["digest"], signature=signature["signature"]
+            )
+            for signature in signatures
+        ]
+        return signatures
 
     def set_signature_list(self, signatures: List[ImageConfigSignatureEntry]):
         """
@@ -193,7 +200,9 @@ class ImageConfig(JsonBytes):
         """
         _json = self.get_json()
         labels = ImageConfig._get_labels(_json)
-        labels[ImageConfig.SIGNATURES_LABEL] = json.dumps(signatures)
+        labels[ImageConfig.SIGNATURES_LABEL] = json.dumps(
+            [signature._asdict() for signature in signatures]
+        )
         self._set_json(_json)
 
     async def sign(
@@ -226,7 +235,7 @@ class ImageConfig(JsonBytes):
         if not signature:
             raise RuntimeError("Failed to create signature!")
 
-        entry = {"digest": digest, "signature": signature}
+        entry = ImageConfigSignatureEntry(digest=digest, signature=signature)
         if signature_type == SignatureTypes.RESIGN:
             signatures = [entry]
         else:
@@ -254,10 +263,10 @@ class ImageConfig(JsonBytes):
         # * Normalization during canonicalization ensures a consistent empty set.
 
         results = []
-        for i, signature in enumerate(signatures):
+        for i, signature_entry in enumerate(signatures):
             _temp = self.clone()
             # (Co-)signature
-            if signature["digest"] == signatures[0]["digest"]:
+            if signature_entry.digest == signatures[0].digest:
                 _temp.clear_signature_list()
             # Endorsement
             else:
@@ -265,14 +274,16 @@ class ImageConfig(JsonBytes):
 
             digest = _temp.get_digest_canonical()
             must_be_equal(
-                signature["digest"],
+                signature_entry.digest,
                 digest,
                 "Image config canonical digest mismatch",
                 error_type=DigestMismatchError,
             )
 
-            signer = Signer.for_signature(signature["signature"])
-            result = await signer.verify(digest.encode("utf-8"), signature["signature"])
+            signer = Signer.for_signature(signature_entry.signature)
+            result = await signer.verify(
+                digest.encode("utf-8"), signature_entry.signature
+            )
             results.append(result)
 
-        return {"signatures": signatures, "results": results}
+        return ImageConfigVerifySignatures(results=results, signatures=signatures)

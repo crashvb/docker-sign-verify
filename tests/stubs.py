@@ -5,7 +5,7 @@
 import shlex
 import sys
 
-from typing import Dict, List
+from typing import List
 
 from click.testing import CliRunner, Result
 from docker_registry_client_async import FormattedSHA256, ImageName
@@ -16,6 +16,10 @@ from docker_sign_verify import (
     RegistryV2Manifest,
     SignatureTypes,
     Signer,
+)
+from docker_sign_verify.imagesource import (
+    ImageSourceVerifyImageIntegrity,
+    ImageSourceSignImageConfig,
 )
 
 from .testutils import get_test_data
@@ -107,7 +111,7 @@ class FakeRegistryV2ImageSourceNoLabels(ImageSource):
         self.manifest = None
         self.request = request
 
-    async def quick_sign(self, image_name: ImageName) -> Dict:
+    async def quick_sign(self, image_name: ImageName) -> ImageSourceSignImageConfig:
         """
         Signs a given image in an image source using a fake signer and returns the results.
         This method is a testing shortcut.
@@ -123,10 +127,10 @@ class FakeRegistryV2ImageSourceNoLabels(ImageSource):
             FakeSigner(), image_name, SignatureTypes.SIGN
         )
 
-        self.config = result["image_config"]
+        self.config = result.image_config
         self.manifest.set_config_digest(
-            result["image_config"].get_digest(),
-            len(result["image_config"].get_bytes()),
+            result.image_config.get_digest(),
+            len(result.image_config.get_bytes()),
         )
         return result
 
@@ -197,9 +201,9 @@ class FakeRegistryV2ImageSourceNoLabels(ImageSource):
 
         # LGTM ...
 
-        return {
-            "compressed_layer_files": [],
-            "image_config": data["image_config"],
-            "manifest": data["manifest"],
-            "uncompressed_layer_files": [],
-        }
+        return ImageSourceVerifyImageIntegrity(
+            compressed_layer_files=[],
+            image_config=data.image_config,
+            manifest=data.manifest,
+            uncompressed_layer_files=[],
+        )

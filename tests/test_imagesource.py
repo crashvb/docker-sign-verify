@@ -9,6 +9,7 @@ import pytest
 
 from docker_registry_client_async import ImageName
 from docker_sign_verify import ImageSource, NoSignatureError, Signer
+from docker_sign_verify.imagesource import ImageSourceVerifyImageConfig
 
 from .stubs import _signer_for_signature, FakeRegistryV2ImageSourceNoLabels
 
@@ -43,20 +44,20 @@ async def test__sign_image_config(
     result = await fake_registry_v2_image_source.quick_sign(image_name)
     assert result
 
-    image_config = result["image_config"]
+    image_config = result.image_config
     assert image_config
     assert "FAKE SIGNATURE" in str(image_config)
     assert json.loads(image_config.get_bytes())
 
-    signature_value = result["signature_value"]
+    signature_value = result.signature_value
     assert signature_value
     assert "FAKE SIGNATURE" in signature_value
 
-    verify_image_data = result["verify_image_data"]
+    verify_image_data = result.verify_image_data
     assert verify_image_data
-    assert image_config == verify_image_data["image_config"]
+    assert image_config == verify_image_data.image_config
 
-    manifest = verify_image_data["manifest"]
+    manifest = verify_image_data.manifest
     assert manifest
     assert manifest.get_config_digest() == image_config.get_digest()
     assert len(manifest.get_layers()) == len(image_config.get_image_layers())
@@ -68,22 +69,22 @@ async def test__verify_image_config(
 ):
     """Test verifying the integrity of the image configuration."""
 
-    def assertions(result: dict):
+    def assertions(result: ImageSourceVerifyImageConfig):
         assert result
 
-        image_config = result["image_config"]
+        image_config = result.image_config
         assert image_config
         assert json.loads(image_config.get_bytes())
 
-        image_layers = result["image_layers"]
+        image_layers = result.image_layers
         assert image_layers
 
-        manifest = result["manifest"]
+        manifest = result.manifest
         assert manifest
         assert manifest.get_config_digest() == image_config.get_digest()
         assert json.loads(image_config.get_bytes())
 
-        manifest_layers = result["manifest_layers"]
+        manifest_layers = result.manifest_layers
         assert manifest_layers
         assert len(image_layers) == len(manifest_layers)
 
@@ -117,8 +118,8 @@ async def test_verify_image_signatures(
     Signer.for_signature = _signer_for_signature
 
     result = await fake_registry_v2_image_source.verify_image_signatures(image_name)
-    assert result["image_config"]
-    assert result["signatures"]
+    assert result.image_config
+    assert result.signatures
 
     # Restore the original class method
     Signer.for_signature = original_method

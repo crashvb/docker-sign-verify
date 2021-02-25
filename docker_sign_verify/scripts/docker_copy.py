@@ -5,6 +5,7 @@
 import logging
 import sys
 
+from pathlib import Path
 from traceback import print_exception
 from typing import cast, TypedDict
 
@@ -71,28 +72,28 @@ async def copy(context: Context):
     try:
         ctx_verify = cast(DockerVerifyTypingContextObject, ctx)
         ctx_verify["images"] = [ctx["src_image_name"]]
-        result = await _verify(ctx)
+        result = await _verify(ctx_verify)
         result = result[0]
 
         await ctx["imagesource"].put_image(
             ctx["imagesource"],
             ctx["dest_image_name"],
-            result["manifest"],
-            result["image_config"],
+            result.manifest,
+            result.image_config,
             # TODO: Select compressed_layer_files vs uncompressed_layer_files based on type(imagesource).
-            result["compressed_layer_files"],
+            result.compressed_layer_files,
         )
         if ctx["dry_run"]:
             LOGGER.info(
                 "Dry run completed for image: %s (%s)",
                 ctx["dest_image_name"].resolve_name(),
-                result["image_config"].get_digest(),
+                result.image_config.get_digest(),
             )
         else:
             LOGGER.info(
                 "Replicated new image: %s (%s)",
                 ctx["dest_image_name"].resolve_name(),
-                result["image_config"].get_digest(),
+                result.image_config.get_digest(),
             )
     except Exception as exception:  # pylint: disable=broad-except
         if ctx["verbosity"] > 0:
@@ -162,7 +163,9 @@ def archive(
     ctx = get_context_object(context)
     ctx["src_image_name"] = src_image_name
     ctx["dest_image_name"] = dest_image_name
-    ctx["imagesource"] = ArchiveImageSource(archive=archive, dry_run=ctx["dry_run"])
+    ctx["imagesource"] = ArchiveImageSource(
+        archive=Path(archive), dry_run=ctx["dry_run"]
+    )
     copy(context)
 
 

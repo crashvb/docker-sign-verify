@@ -7,7 +7,7 @@ import logging
 import time
 
 from functools import wraps
-from typing import Any, cast, List, Optional, TypedDict
+from typing import Any, cast, List, Optional, NamedTuple
 
 import gnupg  # Needed for type checking
 
@@ -24,7 +24,7 @@ from .utils import UtilChunkFile, xellipsis
 LOGGER = logging.getLogger(__name__)
 
 
-class ImageSourceVerifyImageIntegrity(TypedDict):
+class ImageSourceVerifyImageIntegrity(NamedTuple):
     # pylint: disable=missing-class-docstring
     compressed_layer_files: Optional[List[AiofilesContextManager]]
     image_config: ImageConfig
@@ -32,14 +32,14 @@ class ImageSourceVerifyImageIntegrity(TypedDict):
     uncompressed_layer_files: List[AiofilesContextManager]
 
 
-class ImageSourceSignImageConfig(TypedDict):
+class ImageSourceSignImageConfig(NamedTuple):
     # pylint: disable=missing-class-docstring
     image_config: ImageConfig
     signature_value: str
     verify_image_data: ImageSourceVerifyImageIntegrity
 
 
-class ImageSourceVerifyImageConfig(TypedDict):
+class ImageSourceVerifyImageConfig(NamedTuple):
     # pylint: disable=missing-class-docstring
     image_config: ImageConfig
     image_layers: List[FormattedSHA256]
@@ -47,19 +47,27 @@ class ImageSourceVerifyImageConfig(TypedDict):
     manifest_layers: List[FormattedSHA256]
 
 
-class ImageSourceGetImageLayerToDisk(UtilChunkFile):
+class ImageSourceGetImageLayerToDisk(NamedTuple):
     # pylint: disable=missing-class-docstring
-    pass
+    digest: FormattedSHA256
+    size: int
 
 
-class ImageSourceSignImage(ImageSourceSignImageConfig):
+class ImageSourceSignImage(NamedTuple):
     # pylint: disable=missing-class-docstring
+    image_config: ImageConfig
     manifest_signed: Manifest
+    signature_value: str
+    verify_image_data: ImageSourceVerifyImageIntegrity
 
 
-class ImageSourceVerifyImageSignatures(ImageSourceVerifyImageIntegrity):
+class ImageSourceVerifyImageSignatures(NamedTuple):
     # pylint: disable=missing-class-docstring
+    compressed_layer_files: Optional[List[AiofilesContextManager]]
+    image_config: ImageConfig
+    manifest: Manifest
     signatures: Any
+    uncompressed_layer_files: List[AiofilesContextManager]
 
 
 class ImageSource(abc.ABC):
@@ -110,16 +118,16 @@ class ImageSource(abc.ABC):
         """
         # Verify image integrity (we use the verified values from this point on)
         data = await self.verify_image_integrity(image_name, **kwargs)
-        image_config = data["image_config"]
+        image_config = data.image_config
 
         # Perform the desired signing operation
         signature_value = await image_config.sign(signer, signature_type)
 
-        return {
-            "image_config": image_config,
-            "signature_value": signature_value,
-            "verify_image_data": data,
-        }
+        return ImageSourceSignImageConfig(
+            image_config=image_config,
+            signature_value=signature_value,
+            verify_image_data=data,
+        )
 
     async def _verify_image_config(
         self, image_name: ImageName, **kwargs
@@ -170,12 +178,12 @@ class ImageSource(abc.ABC):
         # Quick check: Ensure that the layer counts are consistent
         must_be_equal(len(manifest_layers), len(image_layers), "Layer count mismatch")
 
-        return {
-            "image_config": image_config,
-            "image_layers": image_layers,
-            "manifest": manifest,
-            "manifest_layers": manifest_layers,
-        }
+        return ImageSourceVerifyImageConfig(
+            image_config=image_config,
+            image_layers=image_layers,
+            manifest=manifest,
+            manifest_layers=manifest_layers,
+        )
 
     @abc.abstractmethod
     async def get_image_config(self, image_name: ImageName, **kwargs) -> ImageConfig:
@@ -367,16 +375,20 @@ class ImageSource(abc.ABC):
         LOGGER.debug("Verifying Signature(s): %s ...", image_name.resolve_name())
         LOGGER.debug(
             "    config digest (signed): %s",
-            xellipsis(integrity_data["image_config"].get_digest()),
+            xellipsis(integrity_data.image_config.get_digest()),
         )
-        integrity_data = cast(ImageSourceVerifyImageSignatures, integrity_data)
-        integrity_data["signatures"] = await integrity_data[
-            "image_config"
-        ].verify_signatures()
+        signatures = await integrity_data.image_config.verify_signatures()
+        integrity_data = ImageSourceVerifyImageSignatures(
+            compressed_layer_files=integrity_data.compressed_layer_files,
+            image_config=integrity_data.image_config,
+            manifest=integrity_data.manifest,
+            signatures=signatures,
+            uncompressed_layer_files=integrity_data.uncompressed_layer_files,
+        )
 
         # List the image signatures ...
         LOGGER.debug("    signatures:")
-        for result in integrity_data["signatures"]["results"]:
+        for result in integrity_data.signatures.results:
             # pylint: disable=protected-access
             if isinstance(result, gnupg._parsers.Verify):
                 if not result.valid:
