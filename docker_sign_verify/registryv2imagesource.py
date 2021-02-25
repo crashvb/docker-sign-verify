@@ -44,7 +44,8 @@ class RegistryV2ImageSource(ImageSource):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        kwargs.pop("dry_run", None)
+        for key in ["dry_run", "signer_kwargs"]:
+            kwargs.pop(key, None)
         self.docker_registry_client_async = DockerRegistryClientAsync(**kwargs)
 
     async def __aenter__(self) -> "RegistryV2ImageSource":

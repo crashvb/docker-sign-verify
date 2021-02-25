@@ -27,12 +27,10 @@ class PKISigner(Signer):
     Creates and verifies docker image signatures using OpenSSL.
     """
 
-    KEYPAIR = os.environ.get("DSV_PKI_DATASTORE", Path.home().joinpath("dsv.pem"))
-
     TAG_START = "-----BEGIN PKI SIGNATURE-----"
     TAG_END = "-----END PKI SIGNATURE-----"
 
-    def __init__(self, *, keypair_path=KEYPAIR, passphrase: str = None):
+    def __init__(self, *, keypair_path: Path = None, passphrase: str = None):
         """
         Reference: https://www.digicert.com/ssl-support/pem-ssl-creation.htm
         Args:
@@ -41,6 +39,14 @@ class PKISigner(Signer):
         """
         self.keypair_entries = None
         self.keypair_path = keypair_path
+        if not self.keypair_path:
+            pki_datastore = os.environ.get("DSV_PKI_DATASTORE")
+            if pki_datastore:
+                self.keypair_path = Path(pki_datastore)
+        if not self.keypair_path:
+            self.keypair_path = Path.home().joinpath("dsv.pem")
+            LOGGER.warning("Using default KEYPAIR: %s", self.keypair_path)
+        self.keypair_path = Path(self.keypair_path)
         self.passphrase = passphrase
         self.private_signer = None
         self.public_signer = None
