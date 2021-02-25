@@ -5,6 +5,7 @@
 import logging
 import sys
 
+from pathlib import Path
 from traceback import print_exception
 from typing import List, TypedDict
 
@@ -65,15 +66,15 @@ async def _verify(ctx: TypingContextObject) -> List[ImageSourceVerifyImageSignat
             LOGGER.info(
                 "Image %s (%s) is consistent; %d signature(s) verified.",
                 image_name.resolve_name(),
-                result["image_config"].get_digest(),
-                len(result["signatures"]["signatures"]),
+                result.image_config.get_digest(),
+                len(result.signatures.signatures),
             )
         else:
             result = await ctx["imagesource"].verify_image_integrity(image_name)
             LOGGER.info(
                 "Image %s (%s) is consistent.",
                 image_name.resolve_name(),
-                result["image_config"].get_digest(),
+                result.image_config.get_digest(),
             )
             LOGGER.info("Image signature(s) NOT verified.")
         results.append(result)
@@ -86,7 +87,6 @@ async def verify(context: Context) -> List[ImageSourceVerifyImageSignatures]:
     """Verifies an image(s)."""
 
     results = []
-
     ctx = get_context_object(context)
     try:
         results = await _verify(ctx)
@@ -99,8 +99,8 @@ async def verify(context: Context) -> List[ImageSourceVerifyImageSignatures]:
         sys.exit(1)
     finally:
         await ctx["imagesource"].close()
-
-    return results
+        for result in results:
+            result.close()
 
 
 @click.group()
@@ -138,7 +138,7 @@ def archive(context: Context, images: List[ImageName], archive: str):
 
     ctx = get_context_object(context)
     ctx["images"] = images
-    ctx["imagesource"] = ArchiveImageSource(archive=archive)
+    ctx["imagesource"] = ArchiveImageSource(archive=Path(archive))
     verify(context)
 
 

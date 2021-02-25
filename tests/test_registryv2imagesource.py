@@ -175,13 +175,15 @@ async def test_get_image_layer_to_disk(
     LOGGER.debug(
         "Retrieving blob: %s/%s ...", known_good_image["image_name"], config_digest
     )
-    async with aiotempfile(mode="w+b") as file:
+    async with aiotempfile(
+        mode="w+b", prefix=f"tmp{test_get_image_layer_to_disk.__name__}"
+    ) as file:
         result = await registry_v2_image_source.get_image_layer_to_disk(
             known_good_image["image_name"], config_digest, file, **kwargs
         )
         LOGGER.debug("Verifying digest of written file ...")
         assert await hash_file(file.name) == config_digest
-    assert result["digest"] == config_digest
+    assert result.digest == config_digest
 
 
 @pytest.mark.online
@@ -263,11 +265,14 @@ async def test_put_image(
     await registry_v2_image_source.put_image(
         registry_v2_image_source,
         image_name,
-        response["manifest"],
-        response["image_config"],
-        response["compressed_layer_files"],
+        response.manifest,
+        response.image_config,
+        response.compressed_layer_files,
         **kwargs,
     )
+
+    for file in response.compressed_layer_files + response.uncompressed_layer_files:
+        file.close()
 
 
 @pytest.mark.online_modification
@@ -403,37 +408,42 @@ async def test_sign_image_same_image_source(
     def assertions(result: ImageSourceSignImage):
         assert result
 
-        image_config = result["image_config"]
+        image_config = result.image_config
         assert image_config
         assert "FAKE SIGNATURE" in str(image_config)
 
-        signature_value = result["signature_value"]
+        signature_value = result.signature_value
         assert signature_value
         assert "FAKE SIGNATURE" in signature_value
 
-        verify_image_data = result["verify_image_data"]
+        verify_image_data = result.verify_image_data
         assert verify_image_data
-        assert image_config == verify_image_data["image_config"]
+        assert image_config == verify_image_data.image_config
 
-        manifest = verify_image_data["manifest"]
+        manifest = verify_image_data.manifest
         assert manifest
 
-        manifest_signed = result["manifest_signed"]
+        manifest_signed = result.manifest_signed
         assert manifest_signed
         assert manifest_signed.get_config_digest() == image_config.get_digest()
         assert len(manifest_signed.get_layers()) == len(image_config.get_image_layers())
 
     # 1. Single signature
-    assertions(
-        await registry_v2_image_source.sign_image(
-            FakeSigner(),
-            known_good_image["image_name"],
-            registry_v2_image_source,
-            dest_image_name,
-            SignatureTypes.SIGN,
-            **kwargs,
-        )
+    response = await registry_v2_image_source.sign_image(
+        FakeSigner(),
+        known_good_image["image_name"],
+        registry_v2_image_source,
+        dest_image_name,
+        SignatureTypes.SIGN,
+        **kwargs,
     )
+    assertions(response)
+
+    for file in (
+        response.verify_image_data.compressed_layer_files
+        + response.verify_image_data.uncompressed_layer_files
+    ):
+        file.close()
 
     # TODO: Test signing image twice (with same key, with different keys ...)
     #       Can we do this here (using dockerhub), or do we need to do this in test_imageconfig.py???
@@ -453,22 +463,24 @@ async def test_verify_image_integrity(
     def assertions(result: ImageSourceVerifyImageIntegrity):
         assert result
 
-        image_config = result["image_config"]
+        image_config = result.image_config
         assert image_config
 
-        manifest = result["manifest"]
+        manifest = result.manifest
         assert manifest
 
-        assert len(result["compressed_layer_files"]) == len(
-            result["uncompressed_layer_files"]
+        assert len(result.compressed_layer_files) == len(
+            result.uncompressed_layer_files
         )
 
     # 1. Unsigned
-    assertions(
-        await registry_v2_image_source.verify_image_integrity(
-            known_good_image["image_name"], **kwargs
-        )
+    response = await registry_v2_image_source.verify_image_integrity(
+        known_good_image["image_name"], **kwargs
     )
+    assertions(response)
+
+    for file in response.compressed_layer_files + response.uncompressed_layer_files:
+        file.close()
 
     # TODO: Test integrity on a signed image ...
     #       Can we do this here (using dockerhub), or do we need to do this in test_imageconfig.py???

@@ -167,8 +167,11 @@ class ArchiveImageSource(ImageSource):
         self, image_name: ImageName, layer: FormattedSHA256, file, **kwargs
     ) -> ImageSourceGetImageLayerToDisk:
         with open(self.archive, "rb") as file_in:
-            return await untar(
+            response = await untar(
                 file_in, ArchiveManifest.digest_to_layer(layer), file, **kwargs
+            )
+            return ImageSourceGetImageLayerToDisk(
+                digest=response.digest, size=response.size
             )
 
     async def get_manifest(
@@ -336,24 +339,28 @@ class ArchiveImageSource(ImageSource):
         data = await self._sign_image_config(
             signer, src_image_name, signature_type, **kwargs
         )
-        LOGGER.debug("    Signature:\n%s", data["signature_value"])
-        image_config = data["image_config"]
+        LOGGER.debug("    Signature:\n%s", data.signature_value)
+        image_config = data.image_config
         config_digest = image_config.get_digest()
         LOGGER.debug("    config digest (signed): %s", config_digest)
 
         # Generate a new archive manifest ...
-        manifest = data["verify_image_data"]["manifest"].clone()
+        manifest = data.verify_image_data.manifest.clone()
         manifest = cast(ArchiveManifest, manifest)
         manifest.set_config_digest(config_digest)
-        data = cast(ImageSourceSignImage, data)
-        data["manifest_signed"] = manifest
+        data = ImageSourceSignImage(
+            image_config=data.image_config,
+            manifest_signed=manifest,
+            signature_value=data.signature_value,
+            verify_image_data=data.verify_image_data,
+        )
 
         await dest_image_source.put_image(
             self,
             dest_image_name,
             manifest,
             image_config,
-            data["verify_image_data"]["uncompressed_layer_files"],
+            data.verify_image_data.uncompressed_layer_files,
             **kwargs,
         )
 
@@ -371,23 +378,30 @@ class ArchiveImageSource(ImageSource):
 
         # Reconcile manifest layers and image layers (in order)...
         uncompressed_layer_files = []
-        for i, layer in enumerate(data["manifest_layers"]):
-            # Retrieve the archive image layer and verify the digest ...
-            uncompressed_layer_files.append(await aiotempfile())
-            data_uncompressed = await self.get_image_layer_to_disk(
-                image_name, layer, uncompressed_layer_files[i]
-            )
-            must_be_equal(
-                data["image_layers"][i],
-                data_uncompressed["digest"],
-                f"Archive layer[{i}] digest mismatch",
-            )
+        try:
+            for i, layer in enumerate(data.manifest_layers):
+                # Retrieve the archive image layer and verify the digest ...
+                uncompressed_layer_files.append(
+                    await aiotempfile(prefix="tmp-uncompressed")
+                )
+                data_uncompressed = await self.get_image_layer_to_disk(
+                    image_name, layer, uncompressed_layer_files[i]
+                )
+                must_be_equal(
+                    data.image_layers[i],
+                    data_uncompressed.digest,
+                    f"Archive layer[{i}] digest mismatch",
+                )
+        except Exception:
+            for file in uncompressed_layer_files:
+                file.close()
+            raise
 
         LOGGER.debug("Integrity check passed.")
 
-        return {
-            "compressed_layer_files": [],  # TODO: Implement this
-            "image_config": data["image_config"],
-            "manifest": data["manifest"],
-            "uncompressed_layer_files": uncompressed_layer_files,
-        }
+        return ImageSourceVerifyImageIntegrity(
+            compressed_layer_files=[],  # TODO: Implement this
+            image_config=data.image_config,
+            manifest=data.manifest,
+            uncompressed_layer_files=uncompressed_layer_files,
+        )

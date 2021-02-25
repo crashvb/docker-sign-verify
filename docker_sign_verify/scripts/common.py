@@ -99,10 +99,10 @@ def set_log_levels(verbosity: int = LOGGING_DEFAULT):
         _format = "%(asctime)s.%(msecs)d %(levelname)-8s [%(name)s.%(funcName)s:%(lineno)d] %(message)s"
 
     logging.basicConfig(
-        stream=sys.stdout,
-        level=levels[verbosity],
-        format=_format,
         datefmt="%Y-%m-%d %H:%M:%S",
+        format=_format,
+        level=levels[verbosity],
+        stream=sys.stdout,
     )
 
 

@@ -63,7 +63,7 @@ class DeviceMapperRepositoryImageSource(ImageSource):
         if not cache_id:
             raise RuntimeError(f"Unable to find cache id for layer: {layer}")
         path = DeviceMapperRepositoryImageSource.DM_METADATA_ROOT.joinpath(cache_id)
-        raw_metadata = read_file(path)
+        raw_metadata = await read_file(path)
         metadata = json.loads(raw_metadata)
         if not (metadata["device_id"] or metadata["size"]):
             raise RuntimeError(
@@ -216,9 +216,9 @@ class DeviceMapperRepositoryImageSource(ImageSource):
 
         # Generate a signed image configuration ...
         data = await self._sign_image_config(signer, src_image_name, signature_type)
-        manifest = data["verify_image_data"]["manifest"]
-        LOGGER.debug("    Signature:\n%s", data["signature_value"])
-        image_config = data["image_config"]
+        manifest = data.verify_image_data.manifest
+        LOGGER.debug("    Signature:\n%s", data.signature_value)
+        image_config = data.image_config
 
         # Replicate all of the image layers ...
         LOGGER.debug("    Replicating image layers ...")
@@ -227,7 +227,7 @@ class DeviceMapperRepositoryImageSource(ImageSource):
             if not dest_image_source.layer_exists(dest_image_name, repository_layer):
                 await dest_image_source.put_image_layer_from_disk(
                     dest_image_name,
-                    data["verify_image_data"]["compressed_layer_files"][i],
+                    data.verify_image_data.compressed_layer_files[i],
                 )
         # TODO: We we need to track the layer translations here? Is this possible for DM repos?
 
@@ -248,7 +248,7 @@ class DeviceMapperRepositoryImageSource(ImageSource):
 
             if dest_image_name.tag:
                 manifest_signed.override_config(config_digest_signed, dest_image_name)
-            data["manifest_signed"] = manifest_signed
+            data.manifest_signed = manifest_signed
             await dest_image_source.put_manifest(manifest_signed, dest_image_name)
         else:
             raise RuntimeError(f"Unknown derived class: {type(dest_image_source)}")
@@ -266,23 +266,28 @@ class DeviceMapperRepositoryImageSource(ImageSource):
 
         # Reconcile manifest layers and image layers (in order)...
         uncompressed_layer_files = []
-        for i, layer in enumerate(data["manifest_layers"]):
-            # Retrieve the repository image layer and verify the digest ...
-            uncompressed_layer_files.append(tempfile.NamedTemporaryFile())
-            data_compressed = await self.get_image_layer_to_disk(
-                image_name, layer, uncompressed_layer_files[i]
-            )
-            must_be_equal(
-                data["image_layers"][i],
-                data_compressed["digest"],
-                f"Repository layer[{i}] digest mismatch",
-            )
+        try:
+            for i, layer in enumerate(data.manifest_layers):
+                # Retrieve the repository image layer and verify the digest ...
+                uncompressed_layer_files.append(tempfile.NamedTemporaryFile())
+                data_compressed = await self.get_image_layer_to_disk(
+                    image_name, layer, uncompressed_layer_files[i]
+                )
+                must_be_equal(
+                    data.image_layers[i],
+                    data_compressed.digest,
+                    f"Repository layer[{i}] digest mismatch",
+                )
+        except Exception:
+            # for file in uncompressed_layer_files:
+            #     file.close()
+            raise
 
         LOGGER.debug("Integrity check passed.")
 
         return {
             "compressed_layer_files": "TODO",
-            "image_config": data["image_config"],
-            "manifest": data["manifest"],
+            "image_config": data.image_config,
+            "manifest": data.manifest,
             "uncompressed_layer_files": uncompressed_layer_files,
         }

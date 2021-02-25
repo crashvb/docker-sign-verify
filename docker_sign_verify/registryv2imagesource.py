@@ -5,7 +5,7 @@
 import logging
 import os
 
-from typing import cast, List
+from typing import List
 
 from aiotempfile.aiotempfile import open as aiotempfile
 from docker_registry_client_async import (
@@ -71,8 +71,11 @@ class RegistryV2ImageSource(ImageSource):
     async def get_image_layer_to_disk(
         self, image_name: ImageName, layer: FormattedSHA256, file, **kwargs
     ) -> ImageSourceGetImageLayerToDisk:
-        return await self.docker_registry_client_async.get_blob_to_disk(
+        response = await self.docker_registry_client_async.get_blob_to_disk(
             image_name, layer, file, **kwargs
+        )
+        return ImageSourceGetImageLayerToDisk(
+            digest=response["digest"], size=response["size"]
         )
 
     async def get_manifest(
@@ -207,24 +210,27 @@ class RegistryV2ImageSource(ImageSource):
         data = await self._sign_image_config(
             signer, src_image_name, signature_type, **kwargs
         )
-        LOGGER.debug("    Signature:\n%s", data["signature_value"])
-        image_config = data["image_config"]
+        LOGGER.debug("    Signature:\n%s", data.signature_value)
+        image_config = data.image_config
         config_digest = image_config.get_digest()
         LOGGER.debug("    config digest (signed): %s", config_digest)
 
         # Generate a new registry manifest ...
-        manifest = data["verify_image_data"]["manifest"].clone()
-        manifest = cast(RegistryV2Manifest, manifest)
+        manifest = data.verify_image_data.manifest.clone()
         manifest.set_config_digest(config_digest, len(image_config.get_bytes()))
-        data = cast(ImageSourceSignImage, data)
-        data["manifest_signed"] = manifest
+        data = ImageSourceSignImage(
+            image_config=data.image_config,
+            manifest_signed=manifest,
+            signature_value=data.signature_value,
+            verify_image_data=data.verify_image_data,
+        )
 
         await dest_image_source.put_image(
             self,
             dest_image_name,
             manifest,
             image_config,
-            data["verify_image_data"]["compressed_layer_files"],
+            data.verify_image_data.compressed_layer_files,
             **kwargs,
         )
 
@@ -243,40 +249,49 @@ class RegistryV2ImageSource(ImageSource):
         # Reconcile manifest layers and image layers (in order)...
         compressed_layer_files = []
         uncompressed_layer_files = []
-        for i, layer in enumerate(data["manifest_layers"]):
-            # Retrieve the registry image layer and verify the digest ...
-            compressed_layer_files.append(await aiotempfile())
-            data_compressed = await self.get_image_layer_to_disk(
-                image_name, layer, compressed_layer_files[i], **kwargs
-            )
-            must_be_equal(
-                layer,
-                data_compressed["digest"],
-                f"Registry layer[{i}] digest mismatch",
-            )
-            must_be_equal(
-                os.path.getsize(compressed_layer_files[i].name),
-                data_compressed["size"],
-                f"Registry layer[{i}] size mismatch",
-            )
+        try:
+            for i, layer in enumerate(data.manifest_layers):
+                # Retrieve the registry image layer and verify the digest ...
+                compressed_layer_files.append(
+                    await aiotempfile(prefix="tmp-compressed")
+                )
+                data_compressed = await self.get_image_layer_to_disk(
+                    image_name, layer, compressed_layer_files[i], **kwargs
+                )
+                must_be_equal(
+                    layer,
+                    data_compressed.digest,
+                    f"Registry layer[{i}] digest mismatch",
+                )
+                must_be_equal(
+                    os.path.getsize(compressed_layer_files[i].name),
+                    data_compressed.size,
+                    f"Registry layer[{i}] size mismatch",
+                )
 
-            # Decompress (convert) the registry image layer into the image layer
-            # and verify the digest ...
-            uncompressed_layer_files.append(await aiotempfile())
-            data_uncompressed = await gunzip(
-                compressed_layer_files[i].name, uncompressed_layer_files[i]
-            )
-            must_be_equal(
-                data["image_layers"][i],
-                data_uncompressed["digest"],
-                f"Image layer[{i}] digest mismatch",
-            )
+                # Decompress (convert) the registry image layer into the image layer
+                # and verify the digest ...
+                uncompressed_layer_files.append(
+                    await aiotempfile(prefix="tmp-uncompressed")
+                )
+                data_uncompressed = await gunzip(
+                    compressed_layer_files[i].name, uncompressed_layer_files[i]
+                )
+                must_be_equal(
+                    data.image_layers[i],
+                    data_uncompressed.digest,
+                    f"Image layer[{i}] digest mismatch",
+                )
+        except Exception:
+            for file in compressed_layer_files + uncompressed_layer_files:
+                file.close()
+            raise
 
         LOGGER.debug("Integrity check passed.")
 
-        return {
-            "compressed_layer_files": compressed_layer_files,
-            "image_config": data["image_config"],
-            "manifest": data["manifest"],
-            "uncompressed_layer_files": uncompressed_layer_files,
-        }
+        return ImageSourceVerifyImageIntegrity(
+            compressed_layer_files=compressed_layer_files,
+            image_config=data.image_config,
+            manifest=data.manifest,
+            uncompressed_layer_files=uncompressed_layer_files,
+        )

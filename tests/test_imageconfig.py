@@ -21,6 +21,7 @@ from docker_sign_verify import (
     SignatureTypes,
     UnsupportedSignatureTypeError,
 )
+from docker_sign_verify.imageconfig import ImageConfigSignatureEntry
 
 from .stubs import _signer_for_signature, FakeSigner
 from .testutils import get_test_data
@@ -255,8 +256,8 @@ def test_get_signature_list(
     """Test signature data parsing for signed and unsigned configurations."""
     signatures_signed = image_config_signed.get_signature_list()
     assert len(signatures_signed) == 1
-    assert signatures_signed[0]["digest"] == config_digest_canonical
-    assert signatures_signed[0]["signature"] == signature
+    assert signatures_signed[0].digest == config_digest_canonical
+    assert signatures_signed[0].signature == signature
 
     signatures_unsigned = image_config.get_signature_list()
     assert not signatures_unsigned
@@ -279,18 +280,18 @@ async def test_sign(
     assert b"BEGIN FAKE SIGNATURE" in image_config.get_bytes()
     signatures = image_config.get_signature_list()
     assert len(signatures) == 1
-    assert signatures[0]["digest"] == config_digest_canonical
-    assert signatures[0]["signature"] == signer.signature_value
+    assert signatures[0].digest == config_digest_canonical
+    assert signatures[0].signature == signer.signature_value
 
     # Previously signed configurations should now contain the original signature(s) and the new signature.
     assert b"BEGIN FAKE SIGNATURE" in image_config_signed.get_bytes()
     assert b"BEGIN PGP SIGNATURE" in image_config_signed.get_bytes()
     signatures_signed = image_config_signed.get_signature_list()
     assert len(signatures_signed) == 2
-    assert signatures_signed[0]["digest"] == config_digest_canonical
-    assert signatures_signed[0]["signature"] == signature
-    assert signatures_signed[1]["digest"] == config_digest_canonical
-    assert signatures_signed[1]["signature"] == signer.signature_value
+    assert signatures_signed[0].digest == config_digest_canonical
+    assert signatures_signed[0].signature == signature
+    assert signatures_signed[1].digest == config_digest_canonical
+    assert signatures_signed[1].signature == signer.signature_value
 
 
 async def test_sign_endorse(
@@ -316,18 +317,18 @@ async def test_sign_endorse(
     assert b"BEGIN FAKE SIGNATURE" in image_config.get_bytes()
     signatures = image_config.get_signature_list()
     assert len(signatures) == 1
-    assert signatures[0]["digest"] == config_digest_canonical
-    assert signatures[0]["signature"] == signer.signature_value
+    assert signatures[0].digest == config_digest_canonical
+    assert signatures[0].signature == signer.signature_value
 
     # Previously signed configurations should now contain the original signature(s) and the new signature.
     assert b"BEGIN FAKE SIGNATURE" in image_config_signed.get_bytes()
     assert b"BEGIN PGP SIGNATURE" in image_config_signed.get_bytes()
     signatures_signed = image_config_signed.get_signature_list()
     assert len(signatures_signed) == 2
-    assert signatures_signed[0]["digest"] == config_digest_canonical
-    assert signatures_signed[0]["signature"] == signature
-    assert signatures_signed[1]["digest"] == config_digest_signed_canonical
-    assert signatures_signed[1]["signature"] == signer.signature_value
+    assert signatures_signed[0].digest == config_digest_canonical
+    assert signatures_signed[0].signature == signature
+    assert signatures_signed[1].digest == config_digest_signed_canonical
+    assert signatures_signed[1].signature == signer.signature_value
 
 
 async def test_sign_resign(
@@ -350,16 +351,16 @@ async def test_sign_resign(
     assert b"BEGIN FAKE SIGNATURE" in image_config.get_bytes()
     signatures = image_config.get_signature_list()
     assert len(signatures) == 1
-    assert signatures[0]["digest"] == config_digest_canonical
-    assert signatures[0]["signature"] == signer.signature_value
+    assert signatures[0].digest == config_digest_canonical
+    assert signatures[0].signature == signer.signature_value
 
     # Previously signed configurations should now contain (only) the new signature.
     assert b"BEGIN FAKE SIGNATURE" in image_config_signed.get_bytes()
     assert b"BEGIN PGP SIGNATURE" not in image_config_signed.get_bytes()
     signatures_signed = image_config_signed.get_signature_list()
     assert len(signatures_signed) == 1
-    assert signatures[0]["digest"] == config_digest_canonical
-    assert signatures[0]["signature"] == signer.signature_value
+    assert signatures[0].digest == config_digest_canonical
+    assert signatures[0].signature == signer.signature_value
 
 
 async def test_sign_endorse_recursive(image_config: ImageConfig):
@@ -390,7 +391,7 @@ async def test_sign_endorse_recursive(image_config: ImageConfig):
             # Validate the signature / endorsement permutations of the first entry on the stack ...
             signatures = frame["image_config"].get_signature_list()
 
-            flat_list = "".join([signature["signature"] for signature in signatures])
+            flat_list = "".join([signature.signature for signature in signatures])
             if f"X{SignatureTypes.RESIGN.name}" in flat_list:
                 # Too lazy to calculate how many signatures were removed ...
                 assert len(signatures) <= i
@@ -398,18 +399,18 @@ async def test_sign_endorse_recursive(image_config: ImageConfig):
                 assert len(signatures) == i
 
             for sig, signature in enumerate(signatures):
-                LOGGER.debug("    %s", signature["signature"])
-                if f"X{SignatureTypes.ENDORSE.name}" in signature["signature"]:
+                LOGGER.debug("    %s", signature.signature)
+                if f"X{SignatureTypes.ENDORSE.name}" in signature.signature:
                     # Endorsement digests should include all entities of a lower order.
                     temp = frame["image_config"].clone()
                     temp.set_signature_list(temp.get_signature_list()[:sig])
-                    assert signature["digest"] == temp.get_digest_canonical()
-                    assert temp.get_digest_canonical() in signature["signature"]
+                    assert signature.digest == temp.get_digest_canonical()
+                    assert temp.get_digest_canonical() in signature.signature
                 else:
                     # Signature digests should be independent of the number of signatures.
                     # Re-signed images should always contain 1 signature.
-                    assert signature["digest"] == image_config.get_digest_canonical()
-                    assert image_config.get_digest_canonical() in signature["signature"]
+                    assert signature.digest == image_config.get_digest_canonical()
+                    assert image_config.get_digest_canonical() in signature.signature
 
             # Unshift the first image configuration, append three more image configurations on to the stack: ...
             # ... one signed ...
@@ -454,7 +455,7 @@ async def test_verify_signatures(image_config: ImageConfig):
 
     # The Signer's verify() method should be invoked.
     response = await image_config.verify_signatures()
-    assert response["results"] == [{"type": "fake", "valid": True}]
+    assert response.results == [{"type": "fake", "valid": True}]
 
     # Restore the original class method
     Signer.for_signature = original_method
@@ -473,12 +474,15 @@ async def test_verify_signatures_manipulated_signatures(image_config: ImageConfi
 
     # Sanity check
     response = await image_config.verify_signatures()
-    assert response["results"][0]["valid"] is True
+    assert response.results[0]["valid"] is True
 
     # Modify the digest value of the (first) signature ...
     signatures = image_config.get_signature_list()
     temp = deepcopy(signatures)
-    temp[0]["digest"] = "tampertampertamper"
+    temp[0] = ImageConfigSignatureEntry(
+        digest=FormattedSHA256.calculate(b"tampertampertamper"),
+        signature=temp[0].signature,
+    )
     image_config.set_signature_list(temp)
 
     # An exception should be raised if digest value from the signature does not match the canonical digest of the image
@@ -496,12 +500,15 @@ async def test_verify_signatures_manipulated_signatures(image_config: ImageConfi
 
     # Sanity check
     response = await image_config.verify_signatures()
-    assert response["results"][0]["valid"] is True
+    assert response.results[0]["valid"] is True
 
     # Modify the digest value of the second signature ...
     signatures = image_config.get_signature_list()
     temp = deepcopy(signatures)
-    temp[1]["digest"] = "tampertampertamper"
+    temp[1] = ImageConfigSignatureEntry(
+        digest=FormattedSHA256.calculate(b"tampertampertamper"),
+        signature=temp[1].signature,
+    )
     image_config.set_signature_list(temp)
 
     # An exception should be raised if digest value from the signature does not match the canonical digest of the image
@@ -527,5 +534,5 @@ async def test_minimal():
     assert b"BEGIN FAKE SIGNATURE" in image_config.get_bytes()
     signatures = image_config.get_signature_list()
     assert len(signatures) == 1
-    assert signatures[0]["digest"] == config_digest_canonical
-    assert signatures[0]["signature"] == signer.signature_value
+    assert signatures[0].digest == config_digest_canonical
+    assert signatures[0].signature == signer.signature_value

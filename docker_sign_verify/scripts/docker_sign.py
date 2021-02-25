@@ -6,6 +6,7 @@ import logging
 import os
 import sys
 
+from pathlib import Path
 from traceback import print_exception
 from typing import TypedDict
 
@@ -96,7 +97,6 @@ async def sign(context: Context) -> ImageSourceSignImage:
     """Signs an image."""
 
     result = None
-
     ctx = get_context_object(context)
     try:
         if ctx["sigtype"] == "gpg" and ("." in ctx["keyid"] or "/" in ctx["keyid"]):
@@ -125,13 +125,13 @@ async def sign(context: Context) -> ImageSourceSignImage:
             LOGGER.info(
                 "Dry run completed for image: %s (%s)",
                 ctx["dest_image_name"].resolve_name(),
-                result["image_config"].get_digest(),
+                result.image_config.get_digest(),
             )
         else:
             LOGGER.info(
                 "Created new image: %s (%s)",
                 ctx["dest_image_name"].resolve_name(),
-                result["image_config"].get_digest(),
+                result.image_config.get_digest(),
             )
     except Exception as exception:  # pylint: disable=broad-except
         if ctx["verbosity"] > 0:
@@ -142,8 +142,8 @@ async def sign(context: Context) -> ImageSourceSignImage:
         sys.exit(1)
     finally:
         await ctx["imagesource"].close()
-
-    return result
+        if result:
+            result.verify_image_data.close()
 
 
 @click.group()
@@ -206,7 +206,9 @@ def archive(
     ctx["sigtype"] = sigtype
     ctx["src_image_name"] = src_image_name
     ctx["dest_image_name"] = dest_image_name
-    ctx["imagesource"] = ArchiveImageSource(archive=archive, dry_run=ctx["dry_run"])
+    ctx["imagesource"] = ArchiveImageSource(
+        archive=Path(archive), dry_run=ctx["dry_run"]
+    )
     sign(context)
 
 
