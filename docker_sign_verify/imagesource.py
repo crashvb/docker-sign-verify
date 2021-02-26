@@ -9,7 +9,7 @@ import time
 from functools import wraps
 from typing import Any, Dict, List, Optional, NamedTuple
 
-import gnupg  # Needed for type checking
+import pretty_bad_protocol  # Needed for type checking
 
 from aiofiles.base import AiofilesContextManager
 from docker_registry_client_async import FormattedSHA256, ImageName
@@ -418,7 +418,7 @@ class ImageSource(abc.ABC):
             LOGGER.debug("    signatures:")
             for result in data.signatures.results:
                 # pylint: disable=protected-access
-                if isinstance(result, gnupg._parsers.Verify):
+                if isinstance(result, pretty_bad_protocol._parsers.Verify):
                     if not result.valid:
                         raise SignatureMismatchError(
                             "Verification failed for signature with keyid '{0}': {1}".format(
