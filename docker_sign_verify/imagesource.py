@@ -7,9 +7,9 @@ import logging
 import time
 
 from functools import wraps
-from typing import Any, List, Optional, NamedTuple
+from typing import Any, Dict, List, Optional, NamedTuple
 
-import gnupg  # Needed for type checking
+import pretty_bad_protocol  # Needed for type checking
 
 from aiofiles.base import AiofilesContextManager
 from docker_registry_client_async import FormattedSHA256, ImageName
@@ -85,12 +85,23 @@ class ImageSource(abc.ABC):
     Abstract source of docker images.
     """
 
-    def __init__(self, *, dry_run: bool = False, **kwargs):
+    def __init__(
+        self,
+        *,
+        dry_run: bool = False,
+        signer_kwargs: Dict[str, Dict] = None,
+        **kwargs,
+    ):
         """
         Args:
             dry_run: If true, destination image sources will not be changed.
+            signer_kwargs: Parameters to be passed to the Signer instances when the are initialized.
+            image_source_params: Extra parameters for image source processing.
         """
         self.dry_run = dry_run
+        self.signer_kwargs = signer_kwargs
+        if self.signer_kwargs is None:
+            self.signer_kwargs = {}
 
     @staticmethod
     def check_dry_run(func):
@@ -121,7 +132,7 @@ class ImageSource(abc.ABC):
             signature_type: Specifies what type of signature action to perform.
 
         Returns:
-            dict:
+            NamedTuple:
                 image_config: The ImageConfig object corresponding to the signed image.
                 signature_value: as defined by :func:~docker_sign_verify.ImageConfig.sign.
                 verify_image_data: as defined by :func:~docker_sign_verify.ImageSource.verify_image_integrity.
@@ -153,7 +164,7 @@ class ImageSource(abc.ABC):
             image_name: The image name for which to retrieve the configuration.
 
         Returns:
-            dict:
+            NamedTuple:
                 image_config: The image configuration.
                 image_layers: The listing of image layer identifiers.
                 manifest: The image-source specific manifest.
@@ -337,7 +348,7 @@ class ImageSource(abc.ABC):
             signature_type: Specifies what type of signature action to perform.
 
         Returns:
-            dict:
+            NamedTuple:
                 image_config: The ImageConfig object corresponding to the signed image.
                 signature_value: as defined by :func:~docker_sign_verify.ImageConfig.sign.
                 verify_image_data: as defined by :func:~docker_sign_verify.ImageSource.verify_image_integrity.
@@ -356,7 +367,7 @@ class ImageSource(abc.ABC):
             image_name: The image name.
 
         Returns:
-            dict:
+            NamedTuple:
                 compressed_layer_files: The list of compressed layer files on disk (optional).
                 image config: The image configuration.
                 manifest: The image source-specific manifest file (archive, registry, repository).
@@ -374,7 +385,7 @@ class ImageSource(abc.ABC):
             image_name: The image name.
 
         Returns:
-            dict:
+            NamedTuple:
                 compressed_layer_files: The list of compressed layer files on disk (optional).
                 image config: The image configuration.
                 manifest: The image source-specific manifest file (archive, registry, repository).
@@ -392,7 +403,9 @@ class ImageSource(abc.ABC):
                 "    config digest (signed): %s",
                 xellipsis(data.image_config.get_digest()),
             )
-            signatures = await data.image_config.verify_signatures()
+            signatures = await data.image_config.verify_signatures(
+                signer_kwargs=self.signer_kwargs
+            )
             data = ImageSourceVerifyImageSignatures(
                 compressed_layer_files=data.compressed_layer_files,
                 image_config=data.image_config,
@@ -405,7 +418,7 @@ class ImageSource(abc.ABC):
             LOGGER.debug("    signatures:")
             for result in data.signatures.results:
                 # pylint: disable=protected-access
-                if isinstance(result, gnupg._parsers.Verify):
+                if isinstance(result, pretty_bad_protocol._parsers.Verify):
                     if not result.valid:
                         raise SignatureMismatchError(
                             "Verification failed for signature with keyid '{0}': {1}".format(

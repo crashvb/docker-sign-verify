@@ -5,7 +5,7 @@
 import abc
 import logging
 
-from typing import Any
+from typing import Any, Dict
 
 from .exceptions import UnsupportedSignatureTypeError
 
@@ -18,23 +18,33 @@ class Signer(abc.ABC):
     """
 
     @staticmethod
-    def for_signature(signature: str) -> "Signer":
+    def for_signature(
+        signature: str, *, signer_kwargs: Dict[str, Dict] = None
+    ) -> "Signer":
         """
         Retrieves a signer that can be used to verify a given signature value.
 
         Args:
             signature: The PEM encoded signature value for which to retrieve the signer.
+            signer_kwargs: Mapping of singer type to kwargs.
 
         Returns:
             The corresponding signer.
         """
         result = None
 
+        if signer_kwargs is None:
+            signer_kwargs = {}
+
         module = __import__(__package__)
         if "PGP SIGNATURE" in signature:
-            result = getattr(module, "GPGSigner")()
+            signer_type = "GPGSigner"
+            kwargs = signer_kwargs.get(signer_type, {})
+            result = getattr(module, signer_type)(**kwargs)
         elif "PKI SIGNATURE" in signature:
-            result = getattr(module, "PKISigner")()
+            signer_type = "PKISigner"
+            kwargs = signer_kwargs.get(signer_type, {})
+            result = getattr(module, signer_type)(**kwargs)
 
         if not result:
             raise UnsupportedSignatureTypeError(signature=signature)

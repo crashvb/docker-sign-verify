@@ -2,12 +2,13 @@
 
 """Classes that provide signature functionality."""
 
+import ast
 import asyncio
 import logging
+import inspect
 import io
 import os
 import subprocess
-import types
 
 from pathlib import Path
 from typing import Any
@@ -15,18 +16,56 @@ from typing import Any
 import aiofiles
 
 from aiotempfile.aiotempfile import open as aiotempfile
-from gnupg._meta import GPGBase
-from gnupg._parsers import Verify
+from pretty_bad_protocol._meta import GPGBase
+from pretty_bad_protocol._parsers import Verify
 
 from .signer import Signer
 
 LOGGER = logging.getLogger(__name__)
 
 
+def _patch_pretty_bad_protocol():
+    # pylint: disable=exec-used,protected-access,undefined-variable
+
+    def getsource_dedented(obj):
+        lines = inspect.getsource(obj).split("\n")
+        indent = len(lines[0]) - len(lines[0].lstrip())
+        return "\n".join(line[indent:] for line in lines)
+
+    source = getsource_dedented(Verify._handle_status)
+    node = ast.parse(source)
+
+    # Change the function name ...
+    node.body[0].name = "duck_punch__handle_status"
+
+    # Change KEY_CONSIDERED processing by removing self.status from the join list ...
+    #        FN      IF      ELSEIF    ELSEIF    Assign  join  List    Attribute
+    del node.body[0].body[1].orelse[0].orelse[0].body[0].value.args[0].elts[0]
+    # import astpretty
+    # astpretty.pprint(node.body[0].body[1].orelse[0].orelse[0].body[0].value.args[0])
+
+    # Define a the method, globally ...
+    code = compile(node, __name__, "exec")
+    exec(code, globals())
+
+    # DUCK PUNCH: Override the class method
+    Verify._handle_status = duck_punch__handle_status
+
+    # TODO: Duck punch Verify._handle_status::KEYREVOKED to set self.value = False ...
+
+
 class GPGSigner(Signer):
     """
     Creates and verifies docker image signatures using GnuPG.
     """
+
+    class DuckPunchGPGBase:
+        """Dummy class that doesn't do all the crap that GPGBase.__init__ does."""
+
+        # pylint: disable=too-few-public-methods
+        def __init__(self):
+            self.ignore_homedir_permissions = False
+            self.verbose = False
 
     def __init__(
         self,
@@ -57,6 +96,7 @@ class GPGSigner(Signer):
 
     @staticmethod
     async def _parse_status(status: bytes) -> Verify:
+        # pylint: disable=protected-access
         """
         Invoke the GnuPG library parsing for status.
 
@@ -64,26 +104,13 @@ class GPGSigner(Signer):
             status: Status from GnuPG.
 
         Returns:
-            The gnupg._parsers.Verify object.
+            The pretty_bad_protocol._parsers.Verify object.
         """
-        # DUCK PUNCH:
-        # * Define a dummy class that doesn't do all the crap that GPGBase.__init__ does.
-        # * Borrow the GPGBase._read_response method.
-        class Dummy:
-            # pylint: disable=missing-class-docstring,too-few-public-methods
-            verbose: False
-
-        # pylint: disable=protected-access
-        setattr(
-            Dummy,
-            GPGBase._read_response.__name__,
-            types.MethodType(GPGBase._read_response, Dummy),
-        )
-
         result = Verify(None)
-        # pylint: disable=no-member
-        Dummy()._read_response(
-            io.TextIOWrapper(io.BytesIO(status), encoding="utf-8"), result
+        GPGBase._read_response(
+            GPGSigner.DuckPunchGPGBase(),
+            io.TextIOWrapper(io.BytesIO(status), encoding="utf-8"),
+            result,
         )
         return result
 
@@ -182,3 +209,6 @@ class GPGSigner(Signer):
                 result = await GPGSigner._parse_status(stderr)
 
                 return result
+
+
+_patch_pretty_bad_protocol()

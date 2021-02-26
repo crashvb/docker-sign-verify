@@ -244,12 +244,17 @@ class ImageConfig(JsonBytes):
 
         return signature
 
-    async def verify_signatures(self) -> ImageConfigVerifySignatures:
+    async def verify_signatures(
+        self, *, signer_kwargs: Dict[str, Dict] = None
+    ) -> ImageConfigVerifySignatures:
         """
         Verifies the PEM encoded signature values in the image configuration.
 
+        Args:
+            signer_kwargs: Parameters to be passed to the underlying Signer instance.
+
         Returns:
-            dict:
+            NamedTuple:
                 signature_data: List as defined by :func:~docker_sign_verify.ImageConfig.get_signature_list.
                 results: Signer-specific result value.
         """
@@ -280,7 +285,9 @@ class ImageConfig(JsonBytes):
                 error_type=DigestMismatchError,
             )
 
-            signer = Signer.for_signature(signature_entry.signature)
+            signer = Signer.for_signature(
+                signature_entry.signature, signer_kwargs=signer_kwargs
+            )
             result = await signer.verify(
                 digest.encode("utf-8"), signature_entry.signature
             )

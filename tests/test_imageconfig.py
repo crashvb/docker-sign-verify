@@ -8,6 +8,7 @@ import json
 import logging
 
 from copy import deepcopy
+from time import time
 from typing import List
 
 import pytest
@@ -444,7 +445,7 @@ async def test_verify_signatures(image_config: ImageConfig):
     #       test environment are difficult to make.
     await image_config.sign(FakeSigner())
 
-    # An exception should be raised if the provider for a signature type is not known
+    # An exception should be raised if the provider for a signature type is not known ...
     with pytest.raises(UnsupportedSignatureTypeError) as exception:
         await image_config.verify_signatures()
     assert str(exception.value) == "Unsupported signature type!"
@@ -453,9 +454,28 @@ async def test_verify_signatures(image_config: ImageConfig):
     original_method = Signer.for_signature
     Signer.for_signature = _signer_for_signature
 
-    # The Signer's verify() method should be invoked.
+    # The Signer's verify() method should be invoked ...
     response = await image_config.verify_signatures()
-    assert response.results == [{"type": "fake", "valid": True}]
+    assert response.results == [
+        {
+            "assignable_value": FakeSigner.DEFAULT_ASSIGNABLE_VALUE,
+            "type": "fake",
+            "valid": True,
+        }
+    ]
+
+    # Make sure that signer_kwargs are passed correctly ...
+    assignable_value = time()
+    response = await image_config.verify_signatures(
+        signer_kwargs={FakeSigner.__name__: {"assignable_value": assignable_value}}
+    )
+    assert response.results == [
+        {
+            "assignable_value": assignable_value,
+            "type": "fake",
+            "valid": True,
+        }
+    ]
 
     # Restore the original class method
     Signer.for_signature = original_method

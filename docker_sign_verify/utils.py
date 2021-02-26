@@ -49,7 +49,7 @@ async def chunk_file(
         file_out_is_async: If True, all file_out IO operations will be awaited.
 
     Returns:
-        dict:
+        NamedTuple:
             digest: The digest value of the chunked data.
             size: The byte size of the chunked data in bytes.
     """
@@ -274,7 +274,7 @@ async def gunzip(path: Path, file_out, file_out_is_async: bool = True) -> UtilCh
         file_out_is_async: If True, all file_out IO operations will be awaited.
 
     Returns:
-        dict: as defined by :func:~docker_sign_verify.Utils._chunk_file.
+        NamedTuple: as defined by :func:~docker_sign_verify.Utils._chunk_file.
     """
     # TODO: Implement an async GzipFile ...
     with gzip.GzipFile(filename=path, mode="rb") as file_in:

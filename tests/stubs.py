@@ -5,7 +5,7 @@
 import shlex
 import sys
 
-from typing import List
+from typing import Dict, List
 
 from click.testing import CliRunner, Result
 from docker_registry_client_async import FormattedSHA256, ImageName
@@ -76,20 +76,31 @@ class DSVCliRunner(CliRunner):
         )
 
 
-def _signer_for_signature(signature: str) -> Signer:
+def _signer_for_signature(
+    signature: str, *, signer_kwargs: Dict[str, Dict] = None
+) -> Signer:
     """Override of docker_sign_verify.Signer::_for_signature()."""
+    if signer_kwargs is None:
+        signer_kwargs = {}
+
     if "FAKE SIGNATURE" in signature:
-        return FakeSigner()
+        kwargs = signer_kwargs.get("FakeSigner", {})
+        return FakeSigner(**kwargs)
     raise RuntimeError("Unsupported signature type!")
 
 
 class FakeSigner(Signer):
     """Creates and verifies docker image signatures static strings."""
 
+    DEFAULT_ASSIGNABLE_VALUE = "DEFAULT_ASSIGNABLE_VALUE"
+
     def __init__(
         self,
-        signature_value="-----BEGIN FAKE SIGNATURE-----\nDEFAULT FAKE SIGNATURE\n-----END FAKE SIGNATURE-----",
+        signature_value: str = "-----BEGIN FAKE SIGNATURE-----\nDEFAULT FAKE SIGNATURE\n-----END FAKE SIGNATURE-----",
+        *,
+        assignable_value: str = DEFAULT_ASSIGNABLE_VALUE,
     ):
+        self.assignable_value = assignable_value
         self.signature_value = signature_value
 
     # Signer Members
@@ -98,7 +109,11 @@ class FakeSigner(Signer):
         return self.signature_value.format(data)
 
     async def verify(self, data: bytes, signature: str):
-        return {"type": "fake", "valid": True}
+        return {
+            "assignable_value": self.assignable_value,
+            "type": "fake",
+            "valid": True,
+        }
 
 
 class FakeRegistryV2ImageSourceNoLabels(ImageSource):

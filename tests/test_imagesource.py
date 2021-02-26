@@ -5,13 +5,16 @@
 """ImageSource tests."""
 
 import json
+
+from time import time
+
 import pytest
 
 from docker_registry_client_async import ImageName
 from docker_sign_verify import ImageSource, NoSignatureError, Signer
 from docker_sign_verify.imagesource import ImageSourceVerifyImageConfig
 
-from .stubs import _signer_for_signature, FakeRegistryV2ImageSourceNoLabels
+from .stubs import _signer_for_signature, FakeRegistryV2ImageSourceNoLabels, FakeSigner
 
 pytestmark = [pytest.mark.asyncio]
 
@@ -120,6 +123,22 @@ async def test_verify_image_signatures(
     result = await fake_registry_v2_image_source.verify_image_signatures(image_name)
     assert result.image_config
     assert result.signatures
+
+    # Make sure that signer_kwargs are passed correctly ...
+    assignable_value = time()
+    fake_registry_v2_image_source.signer_kwargs = {
+        FakeSigner.__name__: {"assignable_value": assignable_value}
+    }
+    result = await fake_registry_v2_image_source.verify_image_signatures(image_name)
+    assert result.image_config
+    assert result.signatures
+    assert result.signatures.results == [
+        {
+            "assignable_value": assignable_value,
+            "type": "fake",
+            "valid": True,
+        }
+    ]
 
     # Restore the original class method
     Signer.for_signature = original_method

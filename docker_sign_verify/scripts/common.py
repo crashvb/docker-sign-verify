@@ -87,11 +87,11 @@ def set_log_levels(verbosity: int = LOGGING_DEFAULT):
     # normal, quiet, silent ...
     if verbosity <= LOGGING_DEFAULT:
         _format = "%(message)s"
-        logging.getLogger("gnupg").setLevel(logging.FATAL)
+        logging.getLogger("pretty_bad_protocol").setLevel(logging.FATAL)
     # debug / verbose ...
     elif verbosity == LOGGING_DEFAULT + 1:
         _format = "%(asctime)s %(levelname)-8s %(message)s"
-        logging.getLogger("gnupg").setLevel(logging.WARNING)
+        logging.getLogger("pretty_bad_protocol").setLevel(logging.WARNING)
         logging.getLogger("urllib3").setLevel(logging.WARNING)
     # very verbose ...
     else:
