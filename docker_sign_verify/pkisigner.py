@@ -8,17 +8,25 @@ import os
 import re
 
 from pathlib import Path
-from typing import Any, List
+from typing import List, NamedTuple, Optional
 
 from Crypto.PublicKey import RSA
 from Crypto.Signature import pkcs1_15
 from Crypto.Signature.pkcs1_15 import PKCS115_SigScheme
 from Crypto.Hash import SHA256
 
-
 from .signer import Signer
 
 LOGGER = logging.getLogger(__name__)
+
+
+class PKISignerVerify(NamedTuple):
+    # pylint: disable=missing-class-docstring
+    keypair_path: Path
+    signer_long: Optional[str]
+    signer_short: Optional[str]
+    type: str
+    valid: bool
 
 
 # https://pysheeet.readthedocs.io/en/latest/notes/python-security.html
@@ -133,7 +141,7 @@ class PKISigner(Signer):
             PKISigner.TAG_END,
         )
 
-    async def verify(self, data: bytes, signature: str) -> Any:
+    async def verify(self, data: bytes, signature: str) -> PKISignerVerify:
         # if not self.public_key_path:
         #    raise RuntimeError("Cannot verify without public key!")
         buffer = base64.b64decode(signature.split()[3])
@@ -148,6 +156,12 @@ class PKISigner(Signer):
         except ValueError:
             ...
 
-        # TODO: Refactor this to be a class that is similar to what GPG returns, and update
-        #       imagesource.verify_image_signatures to refelect the changes.
-        return {"keypair_path": self.keypair_path, "type": "pki", "valid": valid}
+        result = PKISignerVerify(
+            keypair_path=self.keypair_path,
+            signer_long=f"{''.ljust(8)}Signature made using undetailed PKI keypair.",
+            signer_short=f"cert={self.keypair_path}",
+            type="pki",
+            valid=valid,
+        )
+
+        return result

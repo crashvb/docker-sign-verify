@@ -1,11 +1,13 @@
 #!/usr/bin/env python
 
+# pylint: disable=too-many-arguments
+
 """Stub classes for offline testing."""
 
 import shlex
 import sys
 
-from typing import Dict, List
+from typing import Any, Dict, List, NamedTuple, Optional
 
 from click.testing import CliRunner, Result
 from docker_registry_client_async import FormattedSHA256, ImageName
@@ -89,6 +91,15 @@ def _signer_for_signature(
     raise RuntimeError("Unsupported signature type!")
 
 
+class FakeSignerVerify(NamedTuple):
+    # pylint: disable=missing-class-docstring
+    assignable_value: Optional[Any]
+    signer_long: Optional[str]
+    signer_short: Optional[str]
+    type: str
+    valid: bool
+
+
 class FakeSigner(Signer):
     """Creates and verifies docker image signatures static strings."""
 
@@ -103,17 +114,28 @@ class FakeSigner(Signer):
         self.assignable_value = assignable_value
         self.signature_value = signature_value
 
+    def _get_signature(self, data: bytes) -> str:
+        return self.signature_value.format(data)
+
     # Signer Members
 
     async def sign(self, data: bytes) -> str:
-        return self.signature_value.format(data)
+        return self._get_signature(data)
 
-    async def verify(self, data: bytes, signature: str):
-        return {
-            "assignable_value": self.assignable_value,
-            "type": "fake",
-            "valid": True,
-        }
+    async def verify(self, data: bytes, signature: str) -> FakeSignerVerify:
+        valid = signature == self._get_signature(data)
+        result = FakeSignerVerify(
+            assignable_value=self.assignable_value,
+            signer_long=f"{''.ljust(8)}This is a fake signature for testing.",
+            signer_short="f-a-k-e",
+            type="fake",
+            valid=valid,
+        )
+
+        # Assign metadata ...
+        # TODO: Add better debug logging
+
+        return result
 
 
 class FakeRegistryV2ImageSourceNoLabels(ImageSource):

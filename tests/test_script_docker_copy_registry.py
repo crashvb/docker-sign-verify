@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# pylint: disable=redefined-outer-name
+# pylint: disable=redefined-outer-name,too-many-arguments,unused-import
 
 """CLI tests."""
 
@@ -82,7 +82,7 @@ def test_invalid_keyid(
         result = runner.invoke(cli, args=["registry", str(destination), str(copy)])
         assert result.exception
         assert "Integrity check passed." in caplog.text
-        assert "Verification failed for signature with keyid" in caplog.text
+        assert "Verification failed for signature; keyid=" in caplog.text
         assert "no public key" in caplog.text
 
 

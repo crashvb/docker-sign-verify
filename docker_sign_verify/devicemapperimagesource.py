@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+# pylint: disable=too-many-arguments
+
 """Classes that provide a source of docker images."""
 
 import json

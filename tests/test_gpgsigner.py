@@ -42,6 +42,7 @@ async def gpgsigner(gnupg_keypair: GnuPGKeypair) -> GPGSigner:
 
 async def test__parse_status_key_considered(request):
     """Check for known parsing issues."""
+    # pylint: disable=protected-access
     status = get_test_data(request, __name__, "gnupg.stderr.key_considered")
 
     # Mainly test that it can parse without choking on KEY_CONSIDERED ...

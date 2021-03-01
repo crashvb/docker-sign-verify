@@ -74,6 +74,7 @@ async def registry_v2_image_source(
     docker_registry_secure: DockerRegistrySecure,
     replicate_manifest_lists,
 ) -> RegistryV2ImageSource:
+    # pylint: disable=unused-argument
     """Provides a RegistryV2ImageSource instance."""
     # Do not use caching; get a new instance for each test
     async with RegistryV2ImageSource(

@@ -9,9 +9,9 @@ import inspect
 import io
 import os
 import subprocess
+import time
 
 from pathlib import Path
-from typing import Any
 
 import aiofiles
 
@@ -178,7 +178,7 @@ class GPGSigner(Signer):
         finally:
             signaturefile.unlink(missing_ok=True)
 
-    async def verify(self, data: bytes, signature: str) -> Any:
+    async def verify(self, data: bytes, signature: str) -> Verify:
         # Write the data and signature to temporary files and invoke GnuPG to verify they match ...
         async with aiotempfile(mode="w+b") as datafile:
             await datafile.write(data)
@@ -207,6 +207,26 @@ class GPGSigner(Signer):
                 )
                 _, stderr = await process.communicate()
                 result = await GPGSigner._parse_status(stderr)
+
+                # Assign metadata ...
+                result.signer_long = f"Signature parsing failed!"
+                result.signer_short = f"Signature parsing failed!"
+                try:
+                    result.signer_short = (
+                        f"keyid={result.key_id} status={result.status}"
+                    )
+                    # Note: result.* values may be undefined below ...
+                    timestamp = time.strftime(
+                        "%Y-%m-%d %H:%M:%S", time.gmtime(float(result.sig_timestamp))
+                    )
+                    result.signer_long = "\n".join(
+                        [
+                            f"{''.ljust(8)}Signature made {timestamp} using key ID {result.key_id}",
+                            "".ljust(12) + result.username,
+                        ]
+                    )
+                except Exception:
+                    ...
 
                 return result
 

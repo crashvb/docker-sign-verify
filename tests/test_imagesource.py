@@ -7,6 +7,7 @@
 import json
 
 from time import time
+from typing import cast
 
 import pytest
 
@@ -14,7 +15,12 @@ from docker_registry_client_async import ImageName
 from docker_sign_verify import ImageSource, NoSignatureError, Signer
 from docker_sign_verify.imagesource import ImageSourceVerifyImageConfig
 
-from .stubs import _signer_for_signature, FakeRegistryV2ImageSourceNoLabels, FakeSigner
+from .stubs import (
+    _signer_for_signature,
+    FakeRegistryV2ImageSourceNoLabels,
+    FakeSigner,
+    FakeSignerVerify,
+)
 
 pytestmark = [pytest.mark.asyncio]
 
@@ -132,13 +138,10 @@ async def test_verify_image_signatures(
     result = await fake_registry_v2_image_source.verify_image_signatures(image_name)
     assert result.image_config
     assert result.signatures
-    assert result.signatures.results == [
-        {
-            "assignable_value": assignable_value,
-            "type": "fake",
-            "valid": True,
-        }
-    ]
+    fake_signer_verify = cast(FakeSignerVerify, result.signatures.results[0])
+    assert fake_signer_verify.assignable_value == assignable_value
+    assert fake_signer_verify.type == "fake"
+    assert fake_signer_verify.valid
 
     # Restore the original class method
     Signer.for_signature = original_method

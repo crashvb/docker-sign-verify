@@ -50,9 +50,9 @@ async def test_simple(pkisigner: PKISigner):
 
     # Verify the generated signature against the test data ...
     result = await pkisigner.verify(data, signature)
-    assert result["valid"]
-    assert result["keypair_path"] == pkisigner.keypair_path
-    assert result["type"] == "pki"
+    assert result.valid
+    assert result.keypair_path == pkisigner.keypair_path
+    assert result.type == "pki"
 
 
 async def test_bad_data(pkisigner: PKISigner):
@@ -68,6 +68,6 @@ async def test_bad_data(pkisigner: PKISigner):
 
     # Verify the generated signature against the test data ...
     result = await pkisigner.verify(data, signature)
-    assert not result["valid"]
-    assert result["keypair_path"] == pkisigner.keypair_path
-    assert result["type"] == "pki"
+    assert not result.valid
+    assert result.keypair_path == pkisigner.keypair_path
+    assert result.type == "pki"

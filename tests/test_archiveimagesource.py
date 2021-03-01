@@ -191,7 +191,7 @@ async def test_put_image(
                 image_name, layer, file, **kwargs
             )
             LOGGER.debug("Verifying digest of written file ...")
-        # TODO: What is the correct digest value?
+            # TODO: What is the correct digest value?
 
     for file in response.compressed_layer_files + response.uncompressed_layer_files:
         file.close()

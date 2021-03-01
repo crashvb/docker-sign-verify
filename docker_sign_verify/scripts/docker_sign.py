@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+# pylint: disable=too-many-arguments
+
 """Docker sign command line interface."""
 
 import logging
@@ -188,7 +190,7 @@ def cli(
 )
 @sign_options
 @click.pass_context
-# pylint: disable=redefined-outer-name,too-many-arguments
+# pylint: disable=redefined-outer-name
 def archive(
     context: Context,
     keyid: str,
@@ -215,7 +217,6 @@ def archive(
 @cli.command()
 @sign_options
 @click.pass_context
-# pylint: disable=too-many-arguments
 def registry(
     context: Context,
     keyid: str,
@@ -239,7 +240,6 @@ def registry(
 @cli.command()
 @sign_options
 @click.pass_context
-# pylint: disable=too-many-arguments
 def repository(
     context: Context,
     keyid: str,

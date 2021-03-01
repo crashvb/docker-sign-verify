@@ -1,21 +1,20 @@
 #!/usr/bin/env python
 
+# pylint: disable=too-many-arguments
+
 """Classes that provide a source of docker images."""
 
 import abc
 import logging
-import time
 
 from functools import wraps
 from typing import Any, Dict, List, Optional, NamedTuple
-
-import pretty_bad_protocol  # Needed for type checking
 
 from aiofiles.base import AiofilesContextManager
 from docker_registry_client_async import FormattedSHA256, ImageName
 from docker_registry_client_async.utils import must_be_equal
 
-from .exceptions import SignatureMismatchError
+from .exceptions import SignatureMismatchError, UnsupportedSignatureTypeError
 from .imageconfig import ImageConfig, SignatureTypes
 from .manifest import Manifest
 from .signer import Signer
@@ -92,6 +91,7 @@ class ImageSource(abc.ABC):
         signer_kwargs: Dict[str, Dict] = None,
         **kwargs,
     ):
+        # pylint: disable=unused-argument
         """
         Args:
             dry_run: If true, destination image sources will not be changed.
@@ -417,34 +417,26 @@ class ImageSource(abc.ABC):
             # List the image signatures ...
             LOGGER.debug("    signatures:")
             for result in data.signatures.results:
-                # pylint: disable=protected-access
-                if isinstance(result, pretty_bad_protocol._parsers.Verify):
+                if not hasattr(result, "valid"):
+                    raise UnsupportedSignatureTypeError(
+                        f"Unsupported signature type: {type(result)}!"
+                    )
+
+                if hasattr(result, "signer_short") and hasattr(result, "signer_long"):
                     if not result.valid:
                         raise SignatureMismatchError(
-                            "Verification failed for signature with keyid '{0}': {1}".format(
-                                result.key_id, result.status
-                            )
+                            f"Verification failed for signature; {result.signer_short}"
                         )
-                    LOGGER.debug(
-                        "        Signature made %s using key ID %s",
-                        time.strftime(
-                            "%Y-%m-%d %H:%M:%S",
-                            time.gmtime(float(result.sig_timestamp)),
-                        ),
-                        result.key_id,
-                    )
-                    LOGGER.debug("            %s", result.username)
-                elif result.get("type", None) == "pki":
-                    if not result["valid"]:
-                        raise SignatureMismatchError(
-                            "Verification failed for signature using cert: {0}".format(
-                                result["keypair_path"]
-                            )
-                        )
-                    # TODO: Add better debug logging
-                    LOGGER.debug("        Signature made using undetailed PKI keypair.")
+
+                    for line in result.signer_long.splitlines():
+                        LOGGER.debug(line)
+                # Try to be friendly ...
                 else:
-                    LOGGER.error("Unknown Signature Type: %s", type(result))
+                    if not result.valid:
+                        raise SignatureMismatchError(
+                            f"Verification failed for signature; unknown type: {type(result)}!"
+                        )
+                    LOGGER.debug("        Signature of unknown type: %s", type(result))
         except Exception:
             for file in data.compressed_layer_files + data.uncompressed_layer_files:
                 file.close()

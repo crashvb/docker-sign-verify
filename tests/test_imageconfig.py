@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# pylint: disable=protected-access,redefined-outer-name
+# pylint: disable=protected-access,redefined-outer-name,too-many-arguments
 
 """ImageConfig tests."""
 
@@ -8,23 +8,23 @@ import json
 import logging
 
 from copy import deepcopy
-from time import time
 from typing import List
 
 import pytest
 
 from docker_registry_client_async import FormattedSHA256
+from pytest_gnupg_fixtures import GnuPGKeypair
+
 from docker_sign_verify import (
     DigestMismatchError,
+    GPGSigner,
     ImageConfig,
     NoSignatureError,
-    Signer,
     SignatureTypes,
-    UnsupportedSignatureTypeError,
 )
 from docker_sign_verify.imageconfig import ImageConfigSignatureEntry
 
-from .stubs import _signer_for_signature, FakeSigner
+from .stubs import FakeSigner
 from .testutils import get_test_data
 
 pytestmark = [pytest.mark.asyncio]
@@ -207,10 +207,10 @@ def test_get_bytes_canonical(
 
 
 def test_get_digest(
-    image_config: ImageConfig,
-    image_config_signed: ImageConfig,
     config_digest: str,
     config_digest_signed: str,
+    image_config: ImageConfig,
+    image_config_signed: ImageConfig,
 ):
     """Test digest calculation for signed and unsigned configurations."""
     assert image_config.get_digest() == config_digest
@@ -218,10 +218,10 @@ def test_get_digest(
 
 
 def test_get_digest_canonical(
-    image_config: ImageConfig,
-    image_config_signed: ImageConfig,
     config_digest_canonical: str,
     config_digest_signed_canonical: str,
+    image_config: ImageConfig,
+    image_config_signed: ImageConfig,
 ):
     """Test canonical digest calculation for signed and unsigned configurations."""
     assert image_config.get_digest_canonical() == config_digest_canonical
@@ -249,9 +249,9 @@ def test_clear_signature_list(
 
 
 def test_get_signature_list(
+    config_digest_canonical: str,
     image_config: ImageConfig,
     image_config_signed: ImageConfig,
-    config_digest_canonical: str,
     signature: str,
 ):
     """Test signature data parsing for signed and unsigned configurations."""
@@ -266,102 +266,106 @@ def test_get_signature_list(
 
 # TODO: Scale out these tests to use all types of signers ...
 async def test_sign(
+    config_digest_canonical: str,
+    gnupg_keypair: GnuPGKeypair,
     image_config: ImageConfig,
     image_config_signed: ImageConfig,
-    config_digest_canonical: str,
     signature: str,
 ):
     """Test configuration signing for signed and unsigned configurations."""
 
-    signer = FakeSigner()
-    assert await image_config.sign(signer) == signer.signature_value
-    assert await image_config_signed.sign(signer) == signer.signature_value
+    signer = GPGSigner(
+        keyid=gnupg_keypair.keyid,
+        passphrase=gnupg_keypair.passphrase,
+        homedir=gnupg_keypair.gnupg_home,
+    )
+    sig = await image_config.sign(signer)
+    assert "PGP SIGNATURE" in sig
+    sig_signed = await image_config_signed.sign(signer)
+    assert "PGP SIGNATURE" in sig_signed
 
     # Previously unsigned configurations should now contain the new signature.
-    assert b"BEGIN FAKE SIGNATURE" in image_config.get_bytes()
     signatures = image_config.get_signature_list()
     assert len(signatures) == 1
     assert signatures[0].digest == config_digest_canonical
-    assert signatures[0].signature == signer.signature_value
+    assert signatures[0].signature == sig
 
     # Previously signed configurations should now contain the original signature(s) and the new signature.
-    assert b"BEGIN FAKE SIGNATURE" in image_config_signed.get_bytes()
-    assert b"BEGIN PGP SIGNATURE" in image_config_signed.get_bytes()
+    assert image_config_signed.get_bytes().count(b"BEGIN PGP SIGNATURE") == 2
     signatures_signed = image_config_signed.get_signature_list()
     assert len(signatures_signed) == 2
     assert signatures_signed[0].digest == config_digest_canonical
     assert signatures_signed[0].signature == signature
     assert signatures_signed[1].digest == config_digest_canonical
-    assert signatures_signed[1].signature == signer.signature_value
+    assert signatures_signed[1].signature == sig_signed
 
 
 async def test_sign_endorse(
-    image_config: ImageConfig,
-    image_config_signed: ImageConfig,
     config_digest_canonical: str,
     config_digest_signed_canonical: str,
+    gnupg_keypair: GnuPGKeypair,
+    image_config: ImageConfig,
+    image_config_signed: ImageConfig,
     signature: str,
 ):
     """Test configuration endorsement for signed and unsigned configurations."""
 
-    signer = FakeSigner()
-    assert (
-        await image_config.sign(signer, SignatureTypes.ENDORSE)
-        == signer.signature_value
+    signer = GPGSigner(
+        keyid=gnupg_keypair.keyid,
+        passphrase=gnupg_keypair.passphrase,
+        homedir=gnupg_keypair.gnupg_home,
     )
-    assert (
-        await image_config_signed.sign(signer, SignatureTypes.ENDORSE)
-        == signer.signature_value
-    )
+    sig = await image_config.sign(signer, SignatureTypes.ENDORSE)
+    assert "PGP SIGNATURE" in sig
+    sig_signed = await image_config_signed.sign(signer, SignatureTypes.ENDORSE)
+    assert "PGP SIGNATURE" in sig_signed
 
     # Previously unsigned configurations should now contain the new signature.
-    assert b"BEGIN FAKE SIGNATURE" in image_config.get_bytes()
     signatures = image_config.get_signature_list()
     assert len(signatures) == 1
     assert signatures[0].digest == config_digest_canonical
-    assert signatures[0].signature == signer.signature_value
+    assert signatures[0].signature == sig
 
     # Previously signed configurations should now contain the original signature(s) and the new signature.
-    assert b"BEGIN FAKE SIGNATURE" in image_config_signed.get_bytes()
-    assert b"BEGIN PGP SIGNATURE" in image_config_signed.get_bytes()
+    assert image_config_signed.get_bytes().count(b"BEGIN PGP SIGNATURE") == 2
     signatures_signed = image_config_signed.get_signature_list()
     assert len(signatures_signed) == 2
     assert signatures_signed[0].digest == config_digest_canonical
     assert signatures_signed[0].signature == signature
     assert signatures_signed[1].digest == config_digest_signed_canonical
-    assert signatures_signed[1].signature == signer.signature_value
+    assert signatures_signed[1].signature == sig_signed
 
 
 async def test_sign_resign(
+    config_digest_canonical: str,
+    gnupg_keypair: GnuPGKeypair,
     image_config: ImageConfig,
     image_config_signed: ImageConfig,
-    config_digest_canonical: str,
 ):
     """Test configuration resigning for signed and unsigned configurations."""
 
-    signer = FakeSigner()
-    assert (
-        await image_config.sign(signer, SignatureTypes.RESIGN) == signer.signature_value
+    signer = GPGSigner(
+        keyid=gnupg_keypair.keyid,
+        passphrase=gnupg_keypair.passphrase,
+        homedir=gnupg_keypair.gnupg_home,
     )
-    assert (
-        await image_config_signed.sign(signer, SignatureTypes.RESIGN)
-        == signer.signature_value
-    )
+    sig = await image_config.sign(signer, SignatureTypes.RESIGN)
+    assert "PGP SIGNATURE" in sig
+    sig_signed = await image_config_signed.sign(signer, SignatureTypes.RESIGN)
+    assert "PGP SIGNATURE" in sig_signed
 
     # Previously unsigned configurations should now contain the new signature.
-    assert b"BEGIN FAKE SIGNATURE" in image_config.get_bytes()
     signatures = image_config.get_signature_list()
     assert len(signatures) == 1
     assert signatures[0].digest == config_digest_canonical
-    assert signatures[0].signature == signer.signature_value
+    assert signatures[0].signature == sig
 
     # Previously signed configurations should now contain (only) the new signature.
-    assert b"BEGIN FAKE SIGNATURE" in image_config_signed.get_bytes()
-    assert b"BEGIN PGP SIGNATURE" not in image_config_signed.get_bytes()
+    assert image_config_signed.get_bytes().count(b"BEGIN PGP SIGNATURE") == 1
     signatures_signed = image_config_signed.get_signature_list()
     assert len(signatures_signed) == 1
     assert signatures[0].digest == config_digest_canonical
-    assert signatures[0].signature == signer.signature_value
+    assert signatures[0].signature == sig_signed
 
 
 async def test_sign_endorse_recursive(image_config: ImageConfig):
@@ -432,8 +436,16 @@ async def test_sign_endorse_recursive(image_config: ImageConfig):
             )
 
 
-async def test_verify_signatures(image_config: ImageConfig):
+async def test_verify_signatures(
+    config_digest_canonical: str, gnupg_keypair: GnuPGKeypair, image_config: ImageConfig
+):
     """Test signature verification for signed and unsigned configurations."""
+
+    signer = GPGSigner(
+        keyid=gnupg_keypair.keyid,
+        passphrase=gnupg_keypair.passphrase,
+        homedir=gnupg_keypair.gnupg_home,
+    )
 
     # Unsigned configurations should explicitly raise an exception.
     with pytest.raises(NoSignatureError) as exception:
@@ -441,60 +453,42 @@ async def test_verify_signatures(image_config: ImageConfig):
     assert str(exception.value) == "Image does not contain any signatures!"
 
     # Sign a previously unsigned configuration, so that only the new signature type is present.
-    # Note: It is not trivial to embed "known" GPG / PKI signature types, as assumptions about the
-    #       test environment are difficult to make.
-    await image_config.sign(FakeSigner())
+    signature = await image_config.sign(signer)
 
-    # An exception should be raised if the provider for a signature type is not known ...
-    with pytest.raises(UnsupportedSignatureTypeError) as exception:
-        await image_config.verify_signatures()
-    assert str(exception.value) == "Unsupported signature type!"
-
-    # Replace the class method for resolving signature providers ...
-    original_method = Signer.for_signature
-    Signer.for_signature = _signer_for_signature
-
-    # The Signer's verify() method should be invoked ...
+    # Attempt to verify the signatures using the default trust store ...
     response = await image_config.verify_signatures()
-    assert response.results == [
-        {
-            "assignable_value": FakeSigner.DEFAULT_ASSIGNABLE_VALUE,
-            "type": "fake",
-            "valid": True,
-        }
-    ]
+    assert len(response.signatures) == 1
+    assert response.signatures[0].digest == config_digest_canonical
+    assert response.signatures[0].signature == signature
+    assert not response.results[0].valid
 
-    # Make sure that signer_kwargs are passed correctly ...
-    assignable_value = time()
+    # Verify the signatures using a good trust store ...
     response = await image_config.verify_signatures(
-        signer_kwargs={FakeSigner.__name__: {"assignable_value": assignable_value}}
+        signer_kwargs={GPGSigner.__name__: {"homedir": gnupg_keypair.gnupg_home}}
     )
-    assert response.results == [
-        {
-            "assignable_value": assignable_value,
-            "type": "fake",
-            "valid": True,
-        }
-    ]
-
-    # Restore the original class method
-    Signer.for_signature = original_method
+    assert len(response.signatures) == 1
+    assert response.signatures[0].digest == config_digest_canonical
+    assert response.signatures[0].signature == signature
+    assert response.results[0].valid
 
 
-async def test_verify_signatures_manipulated_signatures(image_config: ImageConfig):
+async def test_verify_signatures_manipulated_signatures(
+    gnupg_keypair: GnuPGKeypair, image_config: ImageConfig
+):
     """Test that signature verification detects manipulated signatures."""
 
+    signer = GPGSigner(
+        keyid=gnupg_keypair.keyid,
+        passphrase=gnupg_keypair.passphrase,
+        homedir=gnupg_keypair.gnupg_home,
+    )
+
     # Add a single signature ...
-    signer = FakeSigner()
-    assert await image_config.sign(signer) == signer.signature_value
-
-    # Replace the class method for resolving signature providers ...
-    original_method = Signer.for_signature
-    Signer.for_signature = _signer_for_signature
-
-    # Sanity check
-    response = await image_config.verify_signatures()
-    assert response.results[0]["valid"] is True
+    await image_config.sign(signer)
+    response = await image_config.verify_signatures(
+        signer_kwargs={GPGSigner.__name__: {"homedir": gnupg_keypair.gnupg_home}}
+    )
+    assert response.results[0].valid
 
     # Modify the digest value of the (first) signature ...
     signatures = image_config.get_signature_list()
@@ -513,14 +507,11 @@ async def test_verify_signatures_manipulated_signatures(image_config: ImageConfi
 
     # Restore the unmodified signature and endorse ...
     image_config.set_signature_list(signatures)
-    assert (
-        await image_config.sign(signer, SignatureTypes.ENDORSE)
-        == signer.signature_value
+    await image_config.sign(signer, SignatureTypes.ENDORSE)
+    response = await image_config.verify_signatures(
+        signer_kwargs={GPGSigner.__name__: {"homedir": gnupg_keypair.gnupg_home}}
     )
-
-    # Sanity check
-    response = await image_config.verify_signatures()
-    assert response.results[0]["valid"] is True
+    assert response.results[0].valid
 
     # Modify the digest value of the second signature ...
     signatures = image_config.get_signature_list()
@@ -537,22 +528,25 @@ async def test_verify_signatures_manipulated_signatures(image_config: ImageConfi
         await image_config.verify_signatures()
     assert str(exception.value).startswith("Image config canonical digest mismatch:")
 
-    # Restore the original class method
-    Signer.for_signature = original_method
 
-
-async def test_minimal():
+async def test_minimal(gnupg_keypair: GnuPGKeypair):
     """Test minimal image configuration (for non-conformant labels)k."""
+
+    signer = GPGSigner(
+        keyid=gnupg_keypair.keyid,
+        passphrase=gnupg_keypair.passphrase,
+        homedir=gnupg_keypair.gnupg_home,
+    )
 
     # Note: At a minimum, [Cc]onfig key must exist with non-null value
     image_config = ImageConfig(b'{"Config":{}}')
     config_digest_canonical = image_config.get_digest_canonical()
-    signer = FakeSigner()
-    assert await image_config.sign(signer) == signer.signature_value
+    signature = await image_config.sign(signer)
+    assert "PGP SIGNATURE" in signature
 
     # A signature should always be able to be added ...
-    assert b"BEGIN FAKE SIGNATURE" in image_config.get_bytes()
+    assert b"BEGIN PGP SIGNATURE" in image_config.get_bytes()
     signatures = image_config.get_signature_list()
     assert len(signatures) == 1
     assert signatures[0].digest == config_digest_canonical
-    assert signatures[0].signature == signer.signature_value
+    assert signatures[0].signature == signature
