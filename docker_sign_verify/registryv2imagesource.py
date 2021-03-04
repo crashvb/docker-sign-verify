@@ -43,11 +43,18 @@ class RegistryV2ImageSource(ImageSource):
     PLATFORM_ARCHITECTURE = os.environ.get("DSV_ARCHITECTURE", "amd64")
     PLATFORM_OS = os.environ.get("DSV_OPERATING_SYSTEM", "linux")
 
-    def __init__(self, **kwargs):
+    def __init__(
+        self,
+        *,
+        docker_registry_client_async: DockerRegistryClientAsync = None,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         for key in ["dry_run", "signer_kwargs"]:
             kwargs.pop(key, None)
-        self.docker_registry_client_async = DockerRegistryClientAsync(**kwargs)
+        if not docker_registry_client_async:
+            docker_registry_client_async = DockerRegistryClientAsync(**kwargs)
+        self.docker_registry_client_async = docker_registry_client_async
 
     async def __aenter__(self) -> "RegistryV2ImageSource":
         return self

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# pylint: disable=redefined-outer-name
+# pylint: disable=line-too-long,redefined-outer-name
 
 """Configures execution of pytest."""
 

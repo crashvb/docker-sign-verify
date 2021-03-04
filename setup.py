@@ -77,6 +77,6 @@ setup(
         "pytest-gnupg-fixtures",
     ],
     test_suite="tests",
-    url="https://pypi.org/project/docker-sign-verify/",
+    url="https://github.com/crashvb/docker-sign-verify",
     version=find_version("docker_sign_verify", "__init__.py"),
 )

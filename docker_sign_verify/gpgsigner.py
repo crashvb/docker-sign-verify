@@ -209,8 +209,8 @@ class GPGSigner(Signer):
                 result = await GPGSigner._parse_status(stderr)
 
                 # Assign metadata ...
-                result.signer_long = f"Signature parsing failed!"
-                result.signer_short = f"Signature parsing failed!"
+                result.signer_long = "Signature parsing failed!"
+                result.signer_short = "Signature parsing failed!"
                 try:
                     result.signer_short = (
                         f"keyid={result.key_id} status={result.status}"
@@ -225,7 +225,7 @@ class GPGSigner(Signer):
                             "".ljust(12) + result.username,
                         ]
                     )
-                except Exception:
+                except:  # pylint: disable=bare-except
                     ...
 
                 return result
