@@ -147,6 +147,8 @@ async def sign(context: Context) -> ImageSourceSignImage:
         if result:
             result.verify_image_data.close()
 
+    return result
+
 
 @click.group()
 @click.option(

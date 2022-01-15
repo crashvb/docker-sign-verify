@@ -8,3 +8,4 @@ tmp
 
 *.egg-info
 *.pyc
+*.swp
