@@ -44,6 +44,13 @@ def _patch_pretty_bad_protocol():
     # import astpretty
     # astpretty.pprint(node.body[0].body[1].orelse[0].orelse[0].body[0].value.args[0])
 
+    # Change ("WARNING", "ERROR", "FAILURE") to keep 'log' defined ...
+    #    FN      IF      ELSEIF    ELSEIF    ELSEIF    ELSEIF    ELSEIF    ELSEIF
+    node.body[0].body[1].orelse[0].orelse[0].orelse[0].orelse[0].orelse[0].orelse[
+        0
+    # ELSEIF    ELSEIF    ELSEIF    ELSEIF    Expr    Call  Attribute Name 'log'
+    ].orelse[0].orelse[0].orelse[0].orelse[0].body[2].value.func.value.id = "LOGGER"
+
     # Define a the method, globally ...
     code = compile(node, __name__, "exec")
     exec(code, globals())

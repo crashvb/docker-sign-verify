@@ -14,6 +14,7 @@ from docker_registry_client_async import (
     FormattedSHA256,
     ImageName,
 )
+from pytest_asyncio.plugin import Mode
 from pytest_docker_registry_fixtures import DockerRegistrySecure
 
 from .stubs import DSVCliRunner
@@ -176,6 +177,8 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "online_modification: allow modification of online content."
     )
+
+    config.option.asyncio_mode = Mode.AUTO
 
 
 @pytest.fixture

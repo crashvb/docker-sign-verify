@@ -13,15 +13,15 @@ from click.testing import CliRunner, Result
 from docker_registry_client_async import FormattedSHA256, ImageName
 from docker_sign_verify import (
     ImageConfig,
-    ImageSource,
     Manifest,
     RegistryV2Manifest,
     SignatureTypes,
     Signer,
 )
-from docker_sign_verify.imagesource import (
-    ImageSourceVerifyImageIntegrity,
-    ImageSourceSignImageConfig,
+from docker_sign_verify.registryv2 import (
+    RegistryV2,
+    RegistryV2VerifyImageIntegrity,
+    RegistryV2SignImageConfig,
 )
 
 from .testutils import get_test_data
@@ -69,12 +69,13 @@ class DSVCliRunner(CliRunner):
             exception = exc
 
         return Result(
-            runner=self,
-            stdout_bytes=b"",
-            stderr_bytes=b"",
-            exit_code=exit_code,
             exception=exception,
+            exit_code=exit_code,
             exc_info=exc_info,
+            return_value=-exit_code,
+            runner=self,
+            stderr_bytes=b"",
+            stdout_bytes=b"",
         )
 
 
@@ -138,7 +139,7 @@ class FakeSigner(Signer):
         return result
 
 
-class FakeRegistryV2ImageSourceNoLabels(ImageSource):
+class FakeRegistryV2NoLabels(RegistryV2):
     """Fake image source used to expose methods in the abstract base class."""
 
     def __init__(self, request, layer_exists: bool = True, **kwargs):
@@ -148,7 +149,7 @@ class FakeRegistryV2ImageSourceNoLabels(ImageSource):
         self.manifest = None
         self.request = request
 
-    async def quick_sign(self, image_name: ImageName) -> ImageSourceSignImageConfig:
+    async def quick_sign(self, image_name: ImageName) -> RegistryV2SignImageConfig:
         """
         Signs a given image in an image source using a fake signer and returns the results.
         This method is a testing shortcut.
@@ -157,7 +158,7 @@ class FakeRegistryV2ImageSourceNoLabels(ImageSource):
             image_name: The name of the image to be signed.
 
         Returns:
-            The results of the docker_sign_verify.ImageSource::_sign_image_config() method.
+            The results of the docker_sign_verify.RegistryV2::_sign_image_config() method.
         """
         # pylint: disable=protected-access
         result = await self._sign_image_config(
@@ -170,8 +171,6 @@ class FakeRegistryV2ImageSourceNoLabels(ImageSource):
             len(result.image_config.get_bytes()),
         )
         return result
-
-    # ImageSource Members
 
     async def get_image_config(self, image_name: ImageName, **kwargs) -> ImageConfig:
         if not self.config:
@@ -238,7 +237,7 @@ class FakeRegistryV2ImageSourceNoLabels(ImageSource):
 
         # LGTM ...
 
-        return ImageSourceVerifyImageIntegrity(
+        return RegistryV2VerifyImageIntegrity(
             compressed_layer_files=[],
             image_config=data.image_config,
             manifest=data.manifest,

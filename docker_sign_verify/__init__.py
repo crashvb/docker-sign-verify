@@ -2,20 +2,15 @@
 
 """Utilities for verifying docker image integrity and signatures."""
 
-from .archiveimagesource import ArchiveImageSource
-from .archivemanifest import ArchiveChangeset, ArchiveManifest, ArchiveRepositories
-from .devicemapperimagesource import DeviceMapperRepositoryImageSource
-from .devicemappermanifest import DeviceMapperRepositoryManifest
 from .exceptions import *
-from .gpgsigner import GPGSigner
-from .imageconfig import ImageConfig
-from .imagesource import ImageSource
-from .manifest import Manifest
-from .pkisigner import PKISigner
-from .registryv2imagesource import RegistryV2ImageSource
-from .registryv2manifest import RegistryV2Manifest
-from .registryv2manifestlist import RegistryV2ManifestList
-from .signer import Signer
-from .specs import SignatureTypes
+from .gpgsigner import *
+from .imageconfig import *
+from .manifest import *
+from .pkisigner import *
+from .registryv2 import *
+from .registryv2manifest import *
+from .registryv2manifestlist import *
+from .signer import *
+from .specs import *
 
-__version__ = "1.1.3.dev0"
+__version__ = "2.0.0.dev0"

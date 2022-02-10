@@ -30,9 +30,7 @@ setup(
     description="A utility that can be used to sign and verify docker images.",
     entry_points="""
         [console_scripts]
-        docker-copy=docker_sign_verify.scripts.docker_copy:cli
-        docker-sign=docker_sign_verify.scripts.docker_sign:cli
-        docker-verify=docker_sign_verify.scripts.docker_verify:cli
+        dsv=docker_sign_verify.scripts.dsv:cli
     """,
     extras_require={
         "dev": [
@@ -56,7 +54,7 @@ setup(
         "aiohttp",
         "aiotempfile",
         "canonicaljson",
-        "docker-registry-client-async>=0.1.4",
+        "docker-registry-client-async>=0.2.0",
         "click",
         "pretty-bad-protocol==3.1.1",
         "pycryptodome",

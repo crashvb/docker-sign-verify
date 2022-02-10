@@ -74,7 +74,7 @@ def config_digest_canonical(request) -> FormattedSHA256:
 
 @pytest.fixture
 def config_digest_signed(request) -> FormattedSHA256:
-    """"Provides the digest value of the signed sample image configuration."""
+    """ "Provides the digest value of the signed sample image configuration."""
     return FormattedSHA256.parse(
         get_test_data(request, __name__, "config_signed.json.digest", "r")
     )
@@ -117,13 +117,13 @@ def signature(request) -> str:
     return get_test_data(request, __name__, "signature", "r")
 
 
-def test___init__(image_config: ImageConfig, image_config_signed: ImageConfig):
+async def test___init__(image_config: ImageConfig, image_config_signed: ImageConfig):
     """Test that signed and unsigned configurations can be instantiated."""
     assert image_config
     assert image_config_signed
 
 
-def test___bytes__(
+async def test___bytes__(
     image_config: ImageConfig,
     image_config_signed: ImageConfig,
     json_bytes: bytes,
@@ -134,7 +134,7 @@ def test___bytes__(
     assert bytes(image_config_signed) == json_bytes_signed
 
 
-def test___str__(
+async def test___str__(
     image_config: ImageConfig,
     image_config_signed: ImageConfig,
     json_bytes: bytes,
@@ -145,7 +145,7 @@ def test___str__(
     assert str(image_config_signed) == json_bytes_signed.decode("utf-8")
 
 
-def test__get_labels():
+async def test__get_labels():
     """Test that labels are able to be retrieved."""
     # Uppercase 'C'
     assert ImageConfig._get_labels(json.loads('{"Config":{"Labels":{"x":"5"}}}')) == {
@@ -161,7 +161,7 @@ def test__get_labels():
     assert ImageConfig._get_labels(json.loads('{"Config":{}}')) == {}
 
 
-def test__normalize():
+async def test__normalize():
     """Test that signed and unsigned configuration can be normalized."""
     # Missing 'Labels'
     assert ImageConfig._normalize(json.loads('{"Config":{}}')) == {
@@ -184,7 +184,7 @@ def test__normalize():
     ) == {"Config": {"Labels": {"signatures": '[{"y":"4"}]', "x": "5"}}}
 
 
-def test_get_bytes(
+async def test_get_bytes(
     image_config: ImageConfig,
     image_config_signed: ImageConfig,
     json_bytes: bytes,
@@ -195,7 +195,7 @@ def test_get_bytes(
     assert image_config_signed.get_bytes() == json_bytes_signed
 
 
-def test_get_bytes_canonical(
+async def test_get_bytes_canonical(
     image_config: ImageConfig,
     image_config_signed: ImageConfig,
     json_bytes_canonical: bytes,
@@ -206,7 +206,7 @@ def test_get_bytes_canonical(
     assert image_config_signed.get_bytes_canonical() == json_bytes_signed_canonical
 
 
-def test_get_digest(
+async def test_get_digest(
     config_digest: str,
     config_digest_signed: str,
     image_config: ImageConfig,
@@ -217,7 +217,7 @@ def test_get_digest(
     assert image_config_signed.get_digest() == config_digest_signed
 
 
-def test_get_digest_canonical(
+async def test_get_digest_canonical(
     config_digest_canonical: str,
     config_digest_signed_canonical: str,
     image_config: ImageConfig,
@@ -228,7 +228,7 @@ def test_get_digest_canonical(
     assert image_config_signed.get_digest_canonical() == config_digest_signed_canonical
 
 
-def test_get_image_layers(
+async def test_get_image_layers(
     image_config: ImageConfig, image_config_signed: ImageConfig, image_layers: List
 ):
     """Test image layer preservation for signed and unsigned configurations."""
@@ -236,7 +236,7 @@ def test_get_image_layers(
     assert image_config_signed.get_image_layers() == image_layers
 
 
-def test_clear_signature_list(
+async def test_clear_signature_list(
     image_config: ImageConfig, image_config_signed: ImageConfig
 ):
     """Test signature data parsing for signed and unsigned configurations."""
@@ -248,7 +248,7 @@ def test_clear_signature_list(
     assert not signatures_unsigned
 
 
-def test_get_signature_list(
+async def test_get_signature_list(
     config_digest_canonical: str,
     image_config: ImageConfig,
     image_config_signed: ImageConfig,

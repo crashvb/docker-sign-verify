@@ -32,7 +32,7 @@ async def pkisigner(request) -> PKISigner:
     return signer
 
 
-def test_for_signature():
+async def test_for_signature():
     """Tests subclass instantiation."""
     result = Signer.for_signature("PKI SIGNATURE")
     assert result

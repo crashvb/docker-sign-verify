@@ -56,7 +56,7 @@ async def test__parse_status_key_considered(request):
     assert result.valid
 
 
-def test_for_signature(caplog: LogCaptureFixture):
+async def test_for_signature(caplog: LogCaptureFixture):
     """Tests subclass instantiation."""
     caplog.set_level(logging.FATAL, logger="pretty_bad_protocol")
     result = Signer.for_signature("PGP SIGNATURE")
