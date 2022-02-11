@@ -4,11 +4,7 @@
 
 A utility that can be used to create and verify embedded signatures in docker images, and verify the integrity of image metadata and layers.
 
-The goal of this utility is to operate directly on:
-
-* Docker Registries (v2)
-* Docker Repositories (devicemapper, overlay2, aufs)
-* Docker archives (from docker-save)
+The goal of this utility is to operate directly on Docker Registries (v2).
 
 ## Features
 
@@ -55,7 +51,7 @@ canonicalized configuration. Then, upload a new manifest containing the embedded
 
 
 ```bash
-$ docker-sign --debug registry --keyid="7DDD762AFCDF1E55" registry:5000/crashvb/base:ubuntu registry:5000/crashvb/base:ubuntu_signed
+$ dsv --debug sign --keyid="7DDD762AFCDF1E55" registry:5000/crashvb/base:ubuntu registry:5000/crashvb/base:ubuntu_signed
 Keypass []:
 INFO:root:Signing: registry:5000/crashvb/base:ubuntu ...
 INFO:root:Verifying Integrity: registry:5000/crashvb/base:ubuntu ...
@@ -110,7 +106,7 @@ Resolve the tag `crashvb/base:ubuntu_signed` in a remote registry `registry:5000
 signatures.
 
 ```bash
-$ docker-verify --debug registry registry:5000/crashvb/base:ubuntu_signed
+$ dsv --debug verify registry:5000/crashvb/base:ubuntu_signed
 INFO:root:Verifying Integrity: registry:5000/crashvb/base:ubuntu_signed ...
 DEBUG:root:    config digest: sha256:d9e31c5898fe2...20a9da3f8cd8251cb
 DEBUG:root:    manifest layers:
@@ -199,14 +195,15 @@ d9e31c5898fe
 
 | Variable | Default Value | Description |
 | ---------| ------------- | ----------- |
-| DSV_GPG_DATASTORE | ~/.gnupg | The GnuPG home directory. |
-| DSV_PKI_DATASTORE | ~/.dsv.pem | The PKI key store and trust store (concatenated PEM entities). |
-| DSV_DOCKERHUB_AUTH | auth.docker.io | The dockerhub authentication endpoint. |
-| DSV_DEFAULT_REGISTRY | index.docker.io | The dockerhub registry API endpoint. |
 | DSV_CREDENTIALS_STORE | ~/.docker/config.json | The docker credentials store. |
+| DSV_DEFAULT_REGISTRY | index.docker.io | The dockerhub registry API endpoint. |
+| DSV_DOCKERHUB_AUTH | auth.docker.io | The dockerhub authentication endpoint. |
+| DSV_GPG_DATASTORE | ~/.gnupg | The GnuPG home directory. |
+| DSV_GPG_LOG_ERRORS | | If defined, errors from gnupg will be logged. |
 | DSV_KEYID | _None_ | Identifier of the signing key. For GnuPG this is the keyid. For PKI this is the path to PEM encoded private key. |
 | DSV_KEYPASS | "" | The corresponding key passphrase. |
 | DSV_KEYTYPE | GPG | The signature type. Either GPG or PKI.
+| DSV_PKI_DATASTORE | ~/.dsv.pem | The PKI key store and trust store (concatenated PEM entities). |
 
 
 ## Development

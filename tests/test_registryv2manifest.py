@@ -6,7 +6,7 @@
 
 import pytest
 
-from docker_registry_client_async import FormattedSHA256, ImageName
+from docker_registry_client_async import FormattedSHA256, ImageName, Manifest
 
 from docker_sign_verify import RegistryV2Manifest
 
@@ -22,16 +22,23 @@ def formattedsha256() -> FormattedSHA256:
 
 
 @pytest.fixture
-def manifest_registry(request) -> bytes:
+def manifest(request) -> bytes:
     """Provides a sample registry manifest."""
-    return get_test_data(request, __name__, "manifest_registry.json")
+    return get_test_data(request, __name__, "manifest.json")
 
 
 @pytest.fixture
-def registry_v2_manifest(manifest_registry: bytes) -> RegistryV2Manifest:
+def registry_v2_manifest(manifest) -> RegistryV2Manifest:
     """Provides a RegistryV2Manifest instance for the sample registry manifest."""
     # Do not use caching; get a new instance for each test
-    return RegistryV2Manifest(manifest_registry)
+    return RegistryV2Manifest(manifest)
+
+
+def test_new_from(manifest):
+    """Test casting."""
+    manifest = Manifest(manifest)
+    registry_v2_manifest = RegistryV2Manifest.new_from(manifest)
+    assert len(registry_v2_manifest.get_layers()) == 2
 
 
 def test___init__(registry_v2_manifest: RegistryV2Manifest):
@@ -39,14 +46,14 @@ def test___init__(registry_v2_manifest: RegistryV2Manifest):
     assert registry_v2_manifest
 
 
-def test___bytes__(registry_v2_manifest: RegistryV2Manifest, manifest_registry: bytes):
+def test___bytes__(registry_v2_manifest: RegistryV2Manifest, manifest):
     """Test __str__ pass-through for different variants."""
-    assert bytes(registry_v2_manifest) == manifest_registry
+    assert bytes(registry_v2_manifest) == manifest
 
 
-def test___str__(registry_v2_manifest: RegistryV2Manifest, manifest_registry: bytes):
+def test___str__(registry_v2_manifest: RegistryV2Manifest, manifest):
     """Test __str__ pass-through for different variants."""
-    assert str(registry_v2_manifest) == manifest_registry.decode("utf-8")
+    assert str(registry_v2_manifest) == manifest.decode("utf-8")
 
 
 def test_set_config_digest(

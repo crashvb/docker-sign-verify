@@ -4,7 +4,7 @@
 
 """Configures execution of pytest."""
 
-from typing import Dict, Generator, TypedDict
+from typing import Dict, Generator, NamedTuple
 
 import pytest
 
@@ -45,25 +45,29 @@ _pytestmark = [
 ]
 
 
-class TypingGetTestData(TypedDict):
+class TypingGetTestData(NamedTuple):
     # pylint: disable=missing-class-docstring
+    digests: Dict[str, FormattedSHA256]
     image: str
     tag: str
-    digests: Dict[str, FormattedSHA256]
+    tag_resolves_to_manifest_list: bool
 
 
-class TypingKnownGoodImage(TypingGetTestData):
+class TypingKnownGoodImage(NamedTuple):
     # pylint: disable=missing-class-docstring
+    digests: Dict[str, FormattedSHA256]
+    image: str
     image_name: ImageName
+    tag: str
 
 
-def get_test_data_registryv2() -> Generator[TypingGetTestData, None, None]:
+def get_test_data() -> Generator[TypingGetTestData, None, None]:
     """Dynamically initializes test data for a local mutable registry."""
     images = [
-        {
-            "image": "library/busybox",
-            "tag": "1.30.1",
-            "digests": {
+        TypingGetTestData(
+            image="library/busybox",
+            tag="1.30.1",
+            digests={
                 # Note: Extracted 4fe88... from the manifest list for 'amd64'.
                 DockerMediaTypes.DISTRIBUTION_MANIFEST_V2: FormattedSHA256(
                     "4fe8827f51a5e11bb83afa8227cbccb402df840d32c6b633b7ad079bc8144100"
@@ -73,12 +77,12 @@ def get_test_data_registryv2() -> Generator[TypingGetTestData, None, None]:
                     "4b6ad3a68d34da29bf7c8ccb5d355ba8b4babcad1f99798204e7abb43e54ee3d"
                 ),
             },
-            "tag_resolves_to_manifest_list": True,
-        },
-        {
-            "image": "library/python",
-            "tag": "3.7.2-slim-stretch",
-            "digests": {
+            tag_resolves_to_manifest_list=True,
+        ),
+        TypingGetTestData(
+            image="library/python",
+            tag="3.7.2-slim-stretch",
+            digests={
                 DockerMediaTypes.DISTRIBUTION_MANIFEST_V2: FormattedSHA256(
                     "0005ba40bf87e486d7061ca0112123270e4a6088b5071223c8d467db3dbba908"
                 ),
@@ -86,48 +90,8 @@ def get_test_data_registryv2() -> Generator[TypingGetTestData, None, None]:
                     "78320634b63efb52f591a7d69d5a50076ce76e7b72c4b45c1e4ddad90c39870a"
                 ),
             },
-            "tag_resolves_to_manifest_list": True,
-        },
-    ]
-    for image in images:
-        yield image
-
-
-def get_test_data_archive() -> Generator[TypingGetTestData, None, None]:
-    """Dynamically initializes test data for a local mutable registry."""
-    images = [
-        # docker save library/busybox@sha256:4fe8827f51a5e11bb83afa8227cbccb402df840d32c6b633b7ad079bc8144100 > \
-        #   archive.digest_only.tar
-        # docker save library/busybox:1.30.1 > archive.tag_only.tar
-        {
-            "image": "library/busybox",
-            "digest": "64f5d945efcc0f39ab11b3cd4ba403cc9fefe1fa3613123ca016cf3708e8cafb",
-            "resource": "archive.digest_only.tar",
-            "_digests": {
-                "changeset_manifest": "085587963d46bdf491f864ef64a2aa30f0dadb8bf695b7a1ae2ffada62651dfc",
-                "manifest_64f5d945efcc0f39ab11b3cd4ba403cc9fefe1fa3613123ca016cf3708e8cafb": "ce342a56fdeb0dbf17f8e0d33b5df0ab69e75b53182ba60f06285ec2ddc48dbe",
-            },
-        },
-        {
-            "image": "library/busybox",
-            "tag": "1.30.1",
-            "resource": "archive.tag_only.tar",
-            "_digests": {
-                "changeset_manifest": "e9b3b249bd0b919a7ce6ccbd23d8adb0b91247546fcfe527d74ed2270b9e227d",
-                "manifest_1.30.1": "2c7e2209dc919d046c1111c5082c819f40c8c25ee252f4b6fc2a03695c66a552",
-            },
-        },
-        {
-            "image": "library/busybox",
-            "tag": "1.30.1",
-            "digest": "64f5d945efcc0f39ab11b3cd4ba403cc9fefe1fa3613123ca016cf3708e8cafb",
-            "resource": "archive.tag_only.tar",
-            "_digests": {
-                "changeset_manifest": "e9b3b249bd0b919a7ce6ccbd23d8adb0b91247546fcfe527d74ed2270b9e227d",
-                "manifest_64f5d945efcc0f39ab11b3cd4ba403cc9fefe1fa3613123ca016cf3708e8cafb": "2c7e2209dc919d046c1111c5082c819f40c8c25ee252f4b6fc2a03695c66a552",
-                "manifest_1.30.1": "2c7e2209dc919d046c1111c5082c819f40c8c25ee252f4b6fc2a03695c66a552",
-            },
-        },
+            tag_resolves_to_manifest_list=True,
+        ),
     ]
     for image in images:
         yield image
@@ -189,23 +153,22 @@ def clirunner() -> Generator[CliRunner, None, None]:
         yield runner
 
 
-@pytest.fixture(params=get_test_data_registryv2())
+@pytest.fixture(params=get_test_data())
 def known_good_image(
     docker_registry_secure: DockerRegistrySecure, request
 ) -> TypingKnownGoodImage:
     """Provides 'known good' metadata for a local image that can be modified."""
-    image_name = ImageName.parse(request.param["image"])
+    image_name = ImageName.parse(request.param.image)
     image_name.endpoint = docker_registry_secure.endpoint
-    request.param["image"] = str(image_name)
-
-    manifest_digest = request.param["digests"][
-        DockerMediaTypes.DISTRIBUTION_MANIFEST_V2
-    ]
-    request.param["image_name"] = ImageName.parse(
-        f"{request.param['image']}:{request.param['tag']}@{manifest_digest}"
+    manifest_digest = request.param.digests[DockerMediaTypes.DISTRIBUTION_MANIFEST_V2]
+    return TypingKnownGoodImage(
+        digests=request.param.digests,
+        image=str(image_name),
+        image_name=ImageName.parse(
+            f"{str(image_name)}:{request.param.tag}@{manifest_digest}"
+        ),
+        tag=request.param.tag,
     )
-
-    return request.param
 
 
 @pytest.fixture

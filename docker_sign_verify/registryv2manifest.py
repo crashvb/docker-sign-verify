@@ -8,10 +8,11 @@ from docker_registry_client_async import (
     DockerMediaTypes,
     FormattedSHA256,
     ImageName,
+    Manifest,
     OCIMediaTypes,
 )
 
-from .manifest import Manifest
+TYPES = [DockerMediaTypes.DISTRIBUTION_MANIFEST_V2, OCIMediaTypes.IMAGE_MANIFEST_V1]
 
 
 class RegistryV2Manifest(Manifest):
@@ -22,15 +23,28 @@ class RegistryV2Manifest(Manifest):
     """
 
     @staticmethod
-    def new_from(manifest: Manifest) -> "RegistryV2Manifest":
+    def is_type(manifest: Manifest) -> bool:
         """
-        Copy constructor.
+        Checks if the media type of a given manifest is acceptable for this class.
 
         Args:
-            manifest: The manifest from which to copy.
+            manifest: The manifest to be checked.
 
         Returns:
+            True if the manifest is acceptable, false otherwise.
+        """
+        return manifest.get_media_type() in TYPES
 
+    @staticmethod
+    def new_from(manifest: Manifest) -> "RegistryV2Manifest":
+        """
+        Creates an image manifest from a given manifest.
+
+        Args:
+            manifest: The manifest from which to create the manifest.
+
+        Returns:
+            The corresponding image manifest list.
         """
         # TODO: Follow up, and hopefully remove this method in favor of inlining ...
         # https://stackoverflow.com/questions/3464061/cast-base-class-to-derived-class-python-or-more-pythonic-way-of-extending-class
@@ -43,6 +57,25 @@ class RegistryV2Manifest(Manifest):
             manifest=manifest.bytes, media_type=manifest.media_type
         )
 
+    def get_config_digest(self, image_name: ImageName = None) -> FormattedSHA256:
+        if self.get_media_type() not in TYPES:
+            raise NotImplementedError(
+                f"Unsupported media type: {self.get_media_type()}"
+            )
+
+        return FormattedSHA256.parse(self.get_json()["config"]["digest"])
+
+    def get_layers(self, image_name: ImageName = None) -> List[FormattedSHA256]:
+        if self.get_media_type() not in TYPES:
+            raise NotImplementedError(
+                f"Unsupported media type: {self.get_media_type()}"
+            )
+
+        return [
+            FormattedSHA256.parse(layer["digest"])
+            for layer in self.get_json()["layers"]
+        ]
+
     def set_config_digest(self, config_digest: FormattedSHA256, size: int):
         """
         Assigns the image configuration digest and size in the image source manifest.
@@ -51,10 +84,7 @@ class RegistryV2Manifest(Manifest):
             config_digest: Image configuration digest in the form <hash type>:<digest value>.
             size: Image configuration size in bytes.
         """
-        if self.get_media_type() not in [
-            DockerMediaTypes.DISTRIBUTION_MANIFEST_V2,
-            OCIMediaTypes.IMAGE_MANIFEST_V1,
-        ]:
+        if self.get_media_type() not in TYPES:
             raise NotImplementedError(
                 f"Unsupported media type: {self.get_media_type()}"
             )
@@ -75,10 +105,7 @@ class RegistryV2Manifest(Manifest):
         Args:
             layers: List of manifest layer identifiers in the form: <hash type>:<digest_value>.
         """
-        if self.get_media_type() not in [
-            DockerMediaTypes.DISTRIBUTION_MANIFEST_V2,
-            OCIMediaTypes.IMAGE_MANIFEST_V1,
-        ]:
+        if self.get_media_type() not in TYPES:
             raise NotImplementedError(
                 f"Unsupported media type: {self.get_media_type()}"
             )
@@ -87,30 +114,3 @@ class RegistryV2Manifest(Manifest):
         for i, layer in enumerate(json["layers"]):
             layer["digest"] = layers[i]
         self._set_json(json)
-
-    # Manifest Members
-
-    def get_config_digest(self, image_name: ImageName = None) -> FormattedSHA256:
-        if self.get_media_type() not in [
-            DockerMediaTypes.DISTRIBUTION_MANIFEST_V2,
-            OCIMediaTypes.IMAGE_MANIFEST_V1,
-        ]:
-            raise NotImplementedError(
-                f"Unsupported media type: {self.get_media_type()}"
-            )
-
-        return FormattedSHA256.parse(self.get_json()["config"]["digest"])
-
-    def get_layers(self, image_name: ImageName = None) -> List[FormattedSHA256]:
-        if self.get_media_type() not in [
-            DockerMediaTypes.DISTRIBUTION_MANIFEST_V2,
-            OCIMediaTypes.IMAGE_MANIFEST_V1,
-        ]:
-            raise NotImplementedError(
-                f"Unsupported media type: {self.get_media_type()}"
-            )
-
-        return [
-            FormattedSHA256.parse(layer["digest"])
-            for layer in self.get_json()["layers"]
-        ]

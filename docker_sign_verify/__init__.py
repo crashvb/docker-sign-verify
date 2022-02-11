@@ -5,7 +5,6 @@
 from .exceptions import *
 from .gpgsigner import *
 from .imageconfig import *
-from .manifest import *
 from .pkisigner import *
 from .registryv2 import *
 from .registryv2manifest import *

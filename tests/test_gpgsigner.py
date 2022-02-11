@@ -40,20 +40,19 @@ async def gpgsigner(gnupg_keypair: GnuPGKeypair) -> GPGSigner:
     yield signer
 
 
-async def test__parse_status_key_considered(request):
+async def test__parse_output_key_considered(request):
     """Check for known parsing issues."""
     # pylint: disable=protected-access
     status = get_test_data(request, __name__, "gnupg.stderr.key_considered")
 
-    # Mainly test that it can parse without choking on KEY_CONSIDERED ...
-    # https://github.com/isislovecruft/python-gnupg/issues/224
-    # ... is NOT fixed by isislovecruft/python-gnupg:PR#220
-    result = await GPGSigner._parse_status(status)
+    result = await GPGSigner._parse_output(output=status)
     assert result
     assert result.fingerprint
-    assert result.status
     assert result.key_id
-    assert result.valid
+    assert result.status
+    assert result.timestamp
+    assert result.trust
+    assert result.username
 
 
 async def test_for_signature(caplog: LogCaptureFixture):
@@ -95,5 +94,4 @@ async def test_bad_data(gpgsigner: GPGSigner):
     # Verify the generated signature against the test data ...
     result = await gpgsigner.verify(data, signature)
     assert not result.valid
-    assert gpgsigner.keyid.endswith(result.key_id)
-    assert result.status == "signature bad"
+    assert result.status != "signature valid"

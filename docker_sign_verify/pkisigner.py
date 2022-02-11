@@ -156,12 +156,10 @@ class PKISigner(Signer):
         except ValueError:
             ...
 
-        result = PKISignerVerify(
+        return PKISignerVerify(
             keypair_path=self.keypair_path,
             signer_long=f"{''.ljust(8)}Signature made using undetailed PKI keypair.",
             signer_short=f"cert={self.keypair_path}",
             type="pki",
             valid=valid,
         )
-
-        return result

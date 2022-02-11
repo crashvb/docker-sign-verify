@@ -52,7 +52,7 @@ def test_copy_invalid_keyid(
     caplog.clear()
     caplog.set_level(logging.DEBUG)
 
-    source = known_good_image["image_name"]
+    source = known_good_image.image_name
     destination = source.clone()
     destination.digest = None
     destination.tag += __name__
@@ -100,7 +100,7 @@ def test_copy_no_signatures_check_signatures(
     caplog.clear()
     caplog.set_level(logging.DEBUG)
 
-    source = known_good_image["image_name"]
+    source = known_good_image.image_name
     destination = source.clone()
     destination.digest = None
     destination.tag += __name__
@@ -128,7 +128,7 @@ def test_copy_no_signatures_no_check_signatures(
     caplog.clear()
     caplog.set_level(logging.DEBUG)
 
-    source = known_good_image["image_name"]
+    source = known_good_image.image_name
     destination = source.clone()
     destination.digest = None
     destination.tag += __name__
@@ -181,7 +181,7 @@ def test_copy_signed(
     caplog.clear()
     caplog.set_level(logging.DEBUG)
 
-    source = known_good_image["image_name"]
+    source = known_good_image.image_name
     destination = source.clone()
     destination.digest = None
     destination.tag += __name__
@@ -232,7 +232,7 @@ def test_copy_unauthorized(
     caplog.clear()
     caplog.set_level(logging.DEBUG)
 
-    source = known_good_image["image_name"]
+    source = known_good_image.image_name
     destination = source.clone()
     destination.digest = None
     destination.tag += __name__
@@ -276,7 +276,7 @@ def test_sign_bad_keyid(
     caplog.clear()
     caplog.set_level(logging.DEBUG)
 
-    source = known_good_image["image_name"]
+    source = known_good_image.image_name
     destination = source.clone()
     destination.digest = None
     destination.tag += __name__
@@ -314,7 +314,7 @@ def test_sign_forced_digest_value(
     caplog.clear()
     caplog.set_level(logging.DEBUG)
 
-    source = known_good_image["image_name"]
+    source = known_good_image.image_name
     destination = source.clone()
     destination.tag += __name__
 
@@ -357,7 +357,7 @@ def test_sign_no_signatures_endorse(
     caplog.clear()
     caplog.set_level(logging.DEBUG)
 
-    source = known_good_image["image_name"]
+    source = known_good_image.image_name
     destination = source.clone()
     destination.digest = None
     destination.tag += __name__
@@ -398,7 +398,7 @@ def test_sign_no_signatures_sign(
     caplog.clear()
     caplog.set_level(logging.DEBUG)
 
-    source = known_good_image["image_name"]
+    source = known_good_image.image_name
     destination = source.clone()
     destination.digest = None
     destination.tag += __name__
@@ -439,7 +439,7 @@ def test_sign_no_signatures_sign_implicit(
     caplog.clear()
     caplog.set_level(logging.DEBUG)
 
-    source = known_good_image["image_name"]
+    source = known_good_image.image_name
     destination = source.clone()
     destination.digest = None
     destination.tag += __name__
@@ -478,7 +478,7 @@ def test_sign_no_signatures_resign(
     caplog.clear()
     caplog.set_level(logging.DEBUG)
 
-    source = known_good_image["image_name"]
+    source = known_good_image.image_name
     destination = source.clone()
     destination.digest = None
     destination.tag += __name__
@@ -530,7 +530,7 @@ def test_sign_unauthorized_destination(
                 "sign",
                 "--keyid",
                 gpgsigner.keyid,
-                str(known_good_image["image_name"]),
+                str(known_good_image.image_name),
                 f"{Indices.DOCKERHUB}/dummy:dummy",
             ],
             env={"DSV_GPG_DATASTORE": str(gpgsigner.homedir)},
@@ -564,7 +564,7 @@ def test_sign_unauthorized_source(
                 "--keyid",
                 gpgsigner.keyid,
                 f"{Indices.DOCKERHUB}/dummy:dummy",
-                str(known_good_image["image_name"]),
+                str(known_good_image.image_name),
             ],
             env={"DSV_GPG_DATASTORE": str(gpgsigner.homedir)},
             input="\n",
@@ -588,7 +588,7 @@ def test_verify_invalid_keyid(
     caplog.clear()
     caplog.set_level(logging.DEBUG)
 
-    source = known_good_image["image_name"]
+    source = known_good_image.image_name
     destination = source.clone()
     destination.digest = None
     destination.tag += __name__
@@ -634,7 +634,7 @@ def test_verify_no_signatures_check_signatures(
     caplog.clear()
     caplog.set_level(logging.DEBUG)
 
-    image = str(known_good_image["image_name"])
+    image = str(known_good_image.image_name)
     with ca_trust_store(docker_registry_secure.cacerts), registry_credentials(
         docker_registry_secure
     ):
@@ -656,7 +656,7 @@ def test_verify_no_signatures_no_check_signatures(
     caplog.clear()
     caplog.set_level(logging.DEBUG)
 
-    image = str(known_good_image["image_name"])
+    image = str(known_good_image.image_name)
     with ca_trust_store(docker_registry_secure.cacerts), registry_credentials(
         docker_registry_secure
     ):
@@ -678,7 +678,7 @@ def test_verify_not_found(
     caplog.clear()
     caplog.set_level(logging.DEBUG)
 
-    image = known_good_image["image_name"].clone()
+    image = known_good_image.image_name.clone()
     image.digest = None
     image.tag += "_does_not_exist"
     image = str(image)
@@ -705,7 +705,7 @@ def test_verify_signed(
     caplog.clear()
     caplog.set_level(logging.DEBUG)
 
-    source = known_good_image["image_name"]
+    source = known_good_image.image_name
     destination = source.clone()
     destination.digest = None
     destination.tag += "_signed"
@@ -752,7 +752,7 @@ def test_verify_unauthorized(
     caplog.clear()
     caplog.set_level(logging.DEBUG)
 
-    image = str(known_good_image["image_name"])
+    image = str(known_good_image.image_name)
     with ca_trust_store(docker_registry_secure.cacerts):
         result = runner.invoke(cli, args=["verify", image])
         assert isinstance(result.exception, SystemExit)

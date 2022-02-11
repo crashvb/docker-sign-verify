@@ -56,7 +56,6 @@ setup(
         "canonicaljson",
         "docker-registry-client-async>=0.2.0",
         "click",
-        "pretty-bad-protocol==3.1.1",
         "pycryptodome",
     ],
     keywords="docker docker-sign docker-verify integrity sign signatures verify",

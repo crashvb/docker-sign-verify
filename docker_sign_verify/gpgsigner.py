@@ -2,63 +2,84 @@
 
 """Classes that provide signature functionality."""
 
-import ast
 import asyncio
 import logging
-import inspect
-import io
 import os
 import subprocess
 import time
+import re
 
+from enum import Enum
 from pathlib import Path
+from typing import NamedTuple, Optional
 
 import aiofiles
 
 from aiotempfile.aiotempfile import open as aiotempfile
-from pretty_bad_protocol._meta import GPGBase
-from pretty_bad_protocol._parsers import Verify
 
 from .signer import Signer
 
 LOGGER = logging.getLogger(__name__)
+PATTERN_BADSIG = re.compile(
+    r"^\[GNUPG:\]\s+BADSIG\s+(?P<key_id>\S+)\s+(?P<username>\S+)", flags=re.MULTILINE
+)
+PATTERN_GOODSIG = re.compile(
+    r"^\[GNUPG:\]\s+GOODSIG\s+(?P<key_id>\S+)\s+(?P<username>\S+)", flags=re.MULTILINE
+)
+PATTERN_NO_PUBKEY = re.compile(
+    r"^\[GNUPG:\]\s+NO_PUBKEY\s+(?P<key_id>\S+)", flags=re.MULTILINE
+)
+PATTERN_TRUST = re.compile(r"^\[GNUPG:\]\s+TRUST_(?P<trust>\S+).*", flags=re.MULTILINE)
+PATTERN_VALIDSIG = re.compile(
+    r"^\[GNUPG:\]\s+VALIDSIG\s+(?P<fingerprint>\S+)\s+(?P<creation_date>\S+)\s+(?P<sig_timestamp>\S+)\s+"
+    r"(?P<expire_timestamp>\S+).+(?P<pubkey_fingerprint>\S+)",
+    flags=re.MULTILINE,
+)
 
 
-def _patch_pretty_bad_protocol():
-    # pylint: disable=exec-used,protected-access,undefined-variable
+# Attempt to be compatible with 'pretty-bad-protocol._parsers::Verify', as it is the defacto python standard for GnuPG.
+class GPGStatus(Enum):
+    # pylint: disable=missing-class-docstring
+    BADSIG = "signature bad"
+    GOODSIG = "signature good"
+    NO_PUBKEY = "no public key"
+    UNDEFINED = "signature undefined"
+    VALIDSIG = "signature valid"
 
-    def getsource_dedented(obj):
-        lines = inspect.getsource(obj).split("\n")
-        indent = len(lines[0]) - len(lines[0].lstrip())
-        return "\n".join(line[indent:] for line in lines)
 
-    source = getsource_dedented(Verify._handle_status)
-    node = ast.parse(source)
+# Intentionally sorted to prevent people from directly comparing the "trustworthiness" of keys.
+# In the "default" ordering, TRUST_NEVER would be "more trusted" than TRUST_UNDEFINED!
+class GPGTrust(Enum):
+    # pylint: disable=missing-class-docstring
+    FULLY = "trust fully"
+    MARGINAL = "trust marginal"
+    NEVER = "trust never"
+    ULTIMATE = "trust ultimate"
+    UNDEFINED = "trust undefined"
 
-    # Change the function name ...
-    node.body[0].name = "duck_punch__handle_status"
 
-    # Change KEY_CONSIDERED processing by removing self.status from the join list ...
-    #        FN      IF      ELSEIF    ELSEIF    Assign  join  List    Attribute
-    del node.body[0].body[1].orelse[0].orelse[0].body[0].value.args[0].elts[0]
-    # import astpretty
-    # astpretty.pprint(node.body[0].body[1].orelse[0].orelse[0].body[0].value.args[0])
+class GPGSignerStatus(NamedTuple):
+    # pylint: disable=missing-class-docstring
+    fingerprint: str
+    key_id: str
+    status: GPGStatus
+    timestamp: str
+    trust: GPGTrust
+    username: str
 
-    # Change ("WARNING", "ERROR", "FAILURE") to keep 'log' defined ...
-    #    FN      IF      ELSEIF    ELSEIF    ELSEIF    ELSEIF    ELSEIF    ELSEIF
-    node.body[0].body[1].orelse[0].orelse[0].orelse[0].orelse[0].orelse[0].orelse[
-        0
-    # ELSEIF    ELSEIF    ELSEIF    ELSEIF    Expr    Call  Attribute Name 'log'
-    ].orelse[0].orelse[0].orelse[0].orelse[0].body[2].value.func.value.id = "LOGGER"
 
-    # Define a the method, globally ...
-    code = compile(node, __name__, "exec")
-    exec(code, globals())
-
-    # DUCK PUNCH: Override the class method
-    Verify._handle_status = duck_punch__handle_status
-
-    # TODO: Duck punch Verify._handle_status::KEYREVOKED to set self.value = False ...
+class GPGSignerVerify(NamedTuple):
+    # pylint: disable=missing-class-docstring
+    fingerprint: str
+    key_id: str
+    signer_long: Optional[str]
+    signer_short: Optional[str]
+    status: str
+    timestamp: str
+    trust: str
+    type: str
+    username: str
+    valid: bool
 
 
 class GPGSigner(Signer):
@@ -66,20 +87,12 @@ class GPGSigner(Signer):
     Creates and verifies docker image signatures using GnuPG.
     """
 
-    class DuckPunchGPGBase:
-        """Dummy class that doesn't do all the crap that GPGBase.__init__ does."""
-
-        # pylint: disable=too-few-public-methods
-        def __init__(self):
-            self.ignore_homedir_permissions = False
-            self.verbose = False
-
     def __init__(
         self,
         *,
+        homedir: Path = None,
         keyid: str = None,
         passphrase: str = None,
-        homedir: Path = None,
     ):
         """
         Args:
@@ -87,8 +100,6 @@ class GPGSigner(Signer):
             passphrase: The passphrase used to unlock the GPG key.
             homedir: The GPG home directory (default: ~/.gnupg).
         """
-        self.keyid = keyid
-        self.passphrase = passphrase
         self.homedir = homedir
         if not self.homedir:
             gpg_datastore = os.environ.get("DSV_GPG_DATASTORE")
@@ -98,28 +109,75 @@ class GPGSigner(Signer):
             self.homedir = Path.home().joinpath(".gnupg")
             LOGGER.warning("Using default GNUPGHOME: %s", self.homedir)
         self.homedir = Path(self.homedir)
+        self.keyid = keyid
+        self.log_gnupg_errors = bool(os.environ.get("DSV_GPG_LOG_ERRORS"))
+        self.passphrase = passphrase
 
         LOGGER.debug("Using trust store: %s", self.homedir)
 
     @staticmethod
-    async def _parse_status(status: bytes) -> Verify:
-        # pylint: disable=protected-access
+    async def _parse_output(*, output: bytes) -> GPGSignerStatus:
         """
-        Invoke the GnuPG library parsing for status.
+        Extracting valid signatures from the output of GnuPG is like trying to fish your wallet out of a porta
+        potty ... *something* good might come of it, but nobody would call it 'a success'!
 
         Args:
             status: Status from GnuPG.
 
         Returns:
-            The pretty_bad_protocol._parsers.Verify object.
+            The parsed status.
         """
-        result = Verify(None)
-        GPGBase._read_response(
-            GPGSigner.DuckPunchGPGBase(),
-            io.TextIOWrapper(io.BytesIO(status), encoding="utf-8"),
-            result,
+        fingerprint = None
+        key_id = None
+        status = GPGStatus.UNDEFINED
+        timestamp = None
+        trust = GPGTrust.UNDEFINED
+        username = None
+
+        string = output.decode("utf-8")
+
+        # The ordering of the pattern matches is significant ...
+        # https://www.gnupg.org/documentation/manuals/gnupg/Automated-signature-checking.html
+
+        match = PATTERN_GOODSIG.search(string=string)
+        if match:
+            key_id = match.group("key_id")
+            username = match.group("username")
+            status = GPGStatus.GOODSIG
+
+        match = PATTERN_TRUST.search(string=string)
+        if match:
+            trust = GPGTrust[match.group("trust").upper()]
+
+        match = PATTERN_VALIDSIG.search(string=string)
+        if match:
+            fingerprint = match.group("fingerprint")
+            timestamp = time.strftime(
+                "%Y-%m-%d %H:%M:%S", time.gmtime(float(match.group("sig_timestamp")))
+            )
+            status = GPGStatus.VALIDSIG
+
+        # These should go last to stomp values ...
+
+        match = PATTERN_BADSIG.search(string=string)
+        if match:
+            key_id = match.group("key_id")
+            username = match.group("username")
+            status = GPGStatus.BADSIG
+
+        match = PATTERN_NO_PUBKEY.search(string=string)
+        if match:
+            key_id = match.group("key_id")
+            status = GPGStatus.NO_PUBKEY
+
+        return GPGSignerStatus(
+            fingerprint=fingerprint,
+            key_id=key_id,
+            status=status,
+            timestamp=timestamp,
+            trust=trust,
+            username=username,
         )
-        return result
 
     # Signer Members
 
@@ -170,12 +228,13 @@ class GPGSigner(Signer):
             )
             stdout, stderr = await process.communicate(self.passphrase.encode("utf-8"))
             if process.returncode:
-                LOGGER.debug(
-                    "Command Failed:\nArgs: %s\n---stdout---\n%s\n---stderr---\n%s",
-                    " ".join(args),
-                    stdout.decode("utf-8"),
-                    stderr.decode("utf-8"),
-                )
+                if self.log_gnupg_errors:
+                    LOGGER.debug(
+                        "Command Failed:\nArgs: %s\n---stdout---\n%s\n---stderr---\n%s",
+                        " ".join(args),
+                        stdout.decode("utf-8"),
+                        stderr.decode("utf-8"),
+                    )
                 return ""
 
         # Retrieve the detached signature and cleanup ...
@@ -185,7 +244,7 @@ class GPGSigner(Signer):
         finally:
             signaturefile.unlink(missing_ok=True)
 
-    async def verify(self, data: bytes, signature: str) -> Verify:
+    async def verify(self, data: bytes, signature: str) -> Optional[GPGSignerVerify]:
         # Write the data and signature to temporary files and invoke GnuPG to verify they match ...
         async with aiotempfile(mode="w+b") as datafile:
             await datafile.write(data)
@@ -212,30 +271,39 @@ class GPGSigner(Signer):
                 process = await asyncio.create_subprocess_exec(
                     *args, stdout=subprocess.PIPE, stderr=subprocess.PIPE
                 )
-                _, stderr = await process.communicate()
-                result = await GPGSigner._parse_status(stderr)
+                stdout, stderr = await process.communicate()
+                if self.log_gnupg_errors and process.returncode:
+                    LOGGER.debug(
+                        "Command Failed:\nArgs: %s\n---stdout---\n%s\n---stderr---\n%s",
+                        " ".join(args),
+                        stdout.decode("utf-8"),
+                        stderr.decode("utf-8"),
+                    )
+
+                status = await GPGSigner._parse_output(output=stderr)
 
                 # Assign metadata ...
-                result.signer_long = "Signature parsing failed!"
-                result.signer_short = "Signature parsing failed!"
+                signer_long = signer_short = "Signature parsing failed!"
                 try:
-                    result.signer_short = (
-                        f"keyid={result.key_id} status={result.status}"
-                    )
-                    # Note: result.* values may be undefined below ...
-                    timestamp = time.strftime(
-                        "%Y-%m-%d %H:%M:%S", time.gmtime(float(result.sig_timestamp))
-                    )
-                    result.signer_long = "\n".join(
+                    signer_short = f"keyid={status.key_id} status={status.status.value}"
+                    signer_long = "\n".join(
                         [
-                            f"{''.ljust(8)}Signature made {timestamp} using key ID {result.key_id}",
-                            "".ljust(12) + result.username,
+                            f"{''.ljust(8)}Signature made {status.timestamp} using key ID {status.key_id}",
+                            "".ljust(12) + status.username,
                         ]
                     )
                 except:  # pylint: disable=bare-except
                     ...
 
-                return result
-
-
-_patch_pretty_bad_protocol()
+                return GPGSignerVerify(
+                    fingerprint=status.fingerprint,
+                    key_id=status.key_id,
+                    signer_long=signer_long,
+                    signer_short=signer_short,
+                    status=status.status.value,
+                    timestamp=status.timestamp,
+                    trust=status.trust.value,
+                    type="gpg",
+                    username=status.username,
+                    valid=(status.status == GPGStatus.VALIDSIG),
+                )

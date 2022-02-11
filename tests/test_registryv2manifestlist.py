@@ -12,16 +12,23 @@ from .testutils import get_test_data
 
 
 @pytest.fixture
-def manifest_list_registry(request) -> bytes:
+def manifest_list(request) -> bytes:
     """Provides a sample registry manifest list."""
-    return get_test_data(request, __name__, "manifest_list_registry.json")
+    return get_test_data(request, __name__, "manifest_list.json")
 
 
 @pytest.fixture
-def registry_v2_manifest_list(manifest_list_registry: bytes) -> RegistryV2ManifestList:
+def registry_v2_manifest_list(manifest_list) -> RegistryV2ManifestList:
     """Provides a RegistryV2ManifestList instance for the sample registry manifest list."""
     # Do not use caching; get a new instance for each test
-    return RegistryV2ManifestList(manifest_list_registry)
+    return RegistryV2ManifestList(manifest_list)
+
+
+def test_new_from(manifest_list):
+    """Test casting."""
+    registry_v2_manifest = RegistryV2Manifest(manifest_list)
+    manifest_list = RegistryV2ManifestList.new_from(registry_v2_manifest)
+    assert len(manifest_list.get_manifests()) == 2
 
 
 def test___init__(registry_v2_manifest_list: RegistryV2ManifestList):
@@ -30,17 +37,17 @@ def test___init__(registry_v2_manifest_list: RegistryV2ManifestList):
 
 
 def test___bytes__(
-    registry_v2_manifest_list: RegistryV2ManifestList, manifest_list_registry: bytes
+    registry_v2_manifest_list: RegistryV2ManifestList, manifest_list
 ):
     """Test __str__ pass-through for different variants."""
-    assert bytes(registry_v2_manifest_list) == manifest_list_registry
+    assert bytes(registry_v2_manifest_list) == manifest_list
 
 
 def test___str__(
-    registry_v2_manifest_list: RegistryV2ManifestList, manifest_list_registry: bytes
+    registry_v2_manifest_list: RegistryV2ManifestList, manifest_list
 ):
     """Test __str__ pass-through for different variants."""
-    assert str(registry_v2_manifest_list) == manifest_list_registry.decode("utf-8")
+    assert str(registry_v2_manifest_list) == manifest_list.decode("utf-8")
 
 
 def test_get_manifests(registry_v2_manifest_list: RegistryV2ManifestList):
@@ -54,11 +61,3 @@ def test_get_manifests(registry_v2_manifest_list: RegistryV2ManifestList):
         registry_v2_manifest_list.get_manifests(architecture="ppc64le") == manifests[:1]
     )
     assert registry_v2_manifest_list.get_manifests(os="linux") == manifests
-
-
-def test_cast_from_manifest(manifest_list_registry: bytes):
-    """Test down-casting."""
-    registry_v2_manifest = RegistryV2Manifest(manifest_list_registry)
-
-    manifest_list = RegistryV2ManifestList.from_manifest(registry_v2_manifest)
-    assert len(manifest_list.get_manifests()) == 2

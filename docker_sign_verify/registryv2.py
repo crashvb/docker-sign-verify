@@ -7,7 +7,7 @@ import logging
 import os
 
 from functools import wraps
-from typing import Any, Dict, List, NamedTuple, Optional
+from typing import Any, Dict, List, NamedTuple, Optional, Union
 
 from aiofiles.base import AiofilesContextManager
 from aiotempfile.aiotempfile import open as aiotempfile
@@ -15,6 +15,7 @@ from docker_registry_client_async import (
     DockerRegistryClientAsync,
     FormattedSHA256,
     ImageName,
+    Manifest,
 )
 from docker_registry_client_async.typing import (
     DockerRegistryClientAsyncPutBlobUpload,
@@ -24,8 +25,8 @@ from docker_registry_client_async.utils import must_be_equal
 
 from .exceptions import SignatureMismatchError, UnsupportedSignatureTypeError
 from .imageconfig import ImageConfig, SignatureTypes
-from .manifest import Manifest
 from .registryv2manifest import RegistryV2Manifest
+from .registryv2manifestlist import RegistryV2ManifestList
 from .signer import Signer
 from .utils import gunzip, xellipsis
 
@@ -274,7 +275,7 @@ class RegistryV2:
 
     async def get_manifest(
         self, image_name: ImageName = None, **kwargs
-    ) -> RegistryV2Manifest:
+    ) -> Union[Manifest, RegistryV2Manifest, RegistryV2ManifestList]:
         """
         Retrieves the manifest for a given image.
 
@@ -288,7 +289,12 @@ class RegistryV2:
         response = await self.docker_registry_client_async.get_manifest(
             image_name, **kwargs
         )
-        manifest = RegistryV2Manifest.new_from(response.manifest)
+        manifest = response.manifest
+        if RegistryV2Manifest.is_type(manifest):
+            manifest = RegistryV2Manifest.new_from(manifest)
+        elif RegistryV2ManifestList.is_type(manifest):
+            manifest = RegistryV2ManifestList.new_from(manifest)
+
         return manifest
 
     async def layer_exists(

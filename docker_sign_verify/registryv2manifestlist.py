@@ -11,6 +11,8 @@ from docker_registry_client_async import (
     OCIMediaTypes,
 )
 
+TYPES = [DockerMediaTypes.DISTRIBUTION_MANIFEST_LIST_V2, OCIMediaTypes.IMAGE_INDEX_V1]
+
 
 class RegistryV2ManifestList(Manifest):
     """
@@ -18,7 +20,20 @@ class RegistryV2ManifestList(Manifest):
     """
 
     @staticmethod
-    def from_manifest(manifest: Manifest) -> "RegistryV2ManifestList":
+    def is_type(manifest: Manifest) -> bool:
+        """
+        Checks if the media type of a given manifest is acceptable for this class.
+
+        Args:
+            manifest: The manifest to be checked.
+
+        Returns:
+            True if the manifest is acceptable, false otherwise.
+        """
+        return manifest.get_media_type() in TYPES
+
+    @staticmethod
+    def new_from(manifest: Manifest) -> "RegistryV2ManifestList":
         """
         Creates an image manifest list from a given manifest.
 
@@ -45,10 +60,7 @@ class RegistryV2ManifestList(Manifest):
         Returns:
             list: Manifest identifiers in the form: <hash type>:<digest value>.
         """
-        if self.get_media_type() not in [
-            DockerMediaTypes.DISTRIBUTION_MANIFEST_LIST_V2,
-            OCIMediaTypes.IMAGE_INDEX_V1,
-        ]:
+        if self.get_media_type() not in TYPES:
             raise NotImplementedError(
                 f"Unsupported media type: {self.get_media_type()}"
             )
