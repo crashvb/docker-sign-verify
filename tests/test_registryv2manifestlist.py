@@ -36,16 +36,12 @@ def test___init__(registry_v2_manifest_list: RegistryV2ManifestList):
     assert registry_v2_manifest_list
 
 
-def test___bytes__(
-    registry_v2_manifest_list: RegistryV2ManifestList, manifest_list
-):
+def test___bytes__(registry_v2_manifest_list: RegistryV2ManifestList, manifest_list):
     """Test __str__ pass-through for different variants."""
     assert bytes(registry_v2_manifest_list) == manifest_list
 
 
-def test___str__(
-    registry_v2_manifest_list: RegistryV2ManifestList, manifest_list
-):
+def test___str__(registry_v2_manifest_list: RegistryV2ManifestList, manifest_list):
     """Test __str__ pass-through for different variants."""
     assert str(registry_v2_manifest_list) == manifest_list.decode("utf-8")
 

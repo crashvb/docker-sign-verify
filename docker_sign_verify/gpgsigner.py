@@ -181,7 +181,7 @@ class GPGSigner(Signer):
 
     # Signer Members
 
-    async def sign(self, data: bytes) -> str:
+    async def sign(self, *, data: bytes) -> str:
         if not self.keyid:
             raise RuntimeError("Cannot sign without keyid!")
         if not self.passphrase or len(self.passphrase) < 1:
@@ -244,7 +244,7 @@ class GPGSigner(Signer):
         finally:
             signaturefile.unlink(missing_ok=True)
 
-    async def verify(self, data: bytes, signature: str) -> Optional[GPGSignerVerify]:
+    async def verify(self, *, data: bytes, signature: str) -> Optional[GPGSignerVerify]:
         # Write the data and signature to temporary files and invoke GnuPG to verify they match ...
         async with aiotempfile(mode="w+b") as datafile:
             await datafile.write(data)

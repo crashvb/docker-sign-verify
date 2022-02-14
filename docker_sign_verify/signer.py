@@ -52,7 +52,7 @@ class Signer(abc.ABC):
         return result
 
     @abc.abstractmethod
-    async def sign(self, data: bytes) -> str:
+    async def sign(self, *, data: bytes) -> str:
         """
         Signs given data.
 
@@ -64,7 +64,7 @@ class Signer(abc.ABC):
         """
 
     @abc.abstractmethod
-    async def verify(self, data: bytes, signature: str) -> Any:
+    async def verify(self, *, data: bytes, signature: str) -> Any:
         """
         Verifies data against a given signature.
 

@@ -7,7 +7,6 @@ from typing import List
 from docker_registry_client_async import (
     DockerMediaTypes,
     FormattedSHA256,
-    ImageName,
     Manifest,
     OCIMediaTypes,
 )
@@ -57,7 +56,7 @@ class RegistryV2Manifest(Manifest):
             manifest=manifest.bytes, media_type=manifest.media_type
         )
 
-    def get_config_digest(self, image_name: ImageName = None) -> FormattedSHA256:
+    def get_config_digest(self) -> FormattedSHA256:
         if self.get_media_type() not in TYPES:
             raise NotImplementedError(
                 f"Unsupported media type: {self.get_media_type()}"
@@ -65,7 +64,7 @@ class RegistryV2Manifest(Manifest):
 
         return FormattedSHA256.parse(self.get_json()["config"]["digest"])
 
-    def get_layers(self, image_name: ImageName = None) -> List[FormattedSHA256]:
+    def get_layers(self) -> List[FormattedSHA256]:
         if self.get_media_type() not in TYPES:
             raise NotImplementedError(
                 f"Unsupported media type: {self.get_media_type()}"

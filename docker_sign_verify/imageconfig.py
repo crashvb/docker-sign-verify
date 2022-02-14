@@ -156,7 +156,7 @@ class ImageConfig(JsonBytes):
 
     def clear_signature_list(self):
         """Helper method to remove all signatures from the image configuration."""
-        self.set_signature_list([])
+        self.set_signature_list(signatures=[])
 
     def get_signature_list(self) -> List[ImageConfigSignatureEntry]:
         """
@@ -190,7 +190,7 @@ class ImageConfig(JsonBytes):
         ]
         return signatures
 
-    def set_signature_list(self, signatures: List[ImageConfigSignatureEntry]):
+    def set_signature_list(self, *, signatures: List[ImageConfigSignatureEntry]):
         """
         Serializes / escapes and assigns signature list to the image configuration. The method modifies the raw image
         configuration.
@@ -206,7 +206,7 @@ class ImageConfig(JsonBytes):
         self._set_json(_json)
 
     async def sign(
-        self, signer: Signer, signature_type: SignatureTypes = SignatureTypes.SIGN
+        self, *, signature_type: SignatureTypes = SignatureTypes.SIGN, signer: Signer
     ) -> str:
         """
         Signs or endorses the SHA256 digest value of image configuration, in canonical JSON form, and appends it to the
@@ -221,8 +221,8 @@ class ImageConfig(JsonBytes):
         endorsement being verified); regardless of what signatures or endorsements were added afterwards.
 
         Args:
-            signer: The signer used to create the signature value.
             signature_type: Specifies what type of signature action to perform.
+            signer: The signer used to create the signature value.
 
         Returns:
             The signature value as defined by :func:~docker_sign_verify.Signers.sign.
@@ -231,7 +231,7 @@ class ImageConfig(JsonBytes):
         if signature_type != SignatureTypes.ENDORSE:
             self.clear_signature_list()
         digest = self.get_digest_canonical()
-        signature = await signer.sign(digest.encode("utf-8"))
+        signature = await signer.sign(data=digest.encode("utf-8"))
         if not signature:
             raise RuntimeError("Failed to create signature!")
 
@@ -240,7 +240,7 @@ class ImageConfig(JsonBytes):
             signatures = [entry]
         else:
             signatures.append(entry)
-        self.set_signature_list(signatures)
+        self.set_signature_list(signatures=signatures)
 
         return signature
 
@@ -275,7 +275,7 @@ class ImageConfig(JsonBytes):
                 _temp.clear_signature_list()
             # Endorsement
             else:
-                _temp.set_signature_list(signatures[:i])
+                _temp.set_signature_list(signatures=signatures[:i])
 
             digest = _temp.get_digest_canonical()
             must_be_equal(
@@ -289,7 +289,7 @@ class ImageConfig(JsonBytes):
                 signature_entry.signature, signer_kwargs=signer_kwargs
             )
             result = await signer.verify(
-                digest.encode("utf-8"), signature_entry.signature
+                data=digest.encode("utf-8"), signature=signature_entry.signature
             )
             results.append(result)
 

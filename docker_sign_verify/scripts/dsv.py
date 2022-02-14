@@ -56,7 +56,7 @@ async def _verify(
 
     for image_name in images:
         if ctx.check_signatures:
-            result = await ctx.registryv2.verify_image_signatures(image_name)
+            result = await ctx.registryv2.verify_image_signatures(image_name=image_name)
             LOGGER.info(
                 "Image %s (%s) is consistent; %d signature(s) verified.",
                 image_name.resolve_name(),
@@ -64,7 +64,7 @@ async def _verify(
                 len(result.signatures.signatures),
             )
         else:
-            result = await ctx.registryv2.verify_image_integrity(image_name)
+            result = await ctx.registryv2.verify_image_integrity(image_name=image_name)
             LOGGER.info(
                 "Image %s (%s) is consistent.",
                 image_name.resolve_name(),
@@ -108,37 +108,36 @@ def cli(
 
 
 @cli.command()
-@click.argument("src_image_name", callback=to_image_name, required=True)
-@click.argument("dest_image_name", callback=to_image_name, required=True)
+@click.argument("image_name_src", callback=to_image_name, required=True)
+@click.argument("image_name_dest", callback=to_image_name, required=True)
 @click.pass_context
 @async_command
-async def copy(context: Context, dest_image_name: ImageName, src_image_name: ImageName):
+async def copy(context: Context, image_name_dest: ImageName, image_name_src: ImageName):
     """Copies and image."""
 
     result = None
     ctx = get_context_object(context=context)
     try:
-        result = await _verify(ctx=ctx, images=[src_image_name])
+        result = await _verify(ctx=ctx, images=[image_name_src])
         result = result[0]
 
         await ctx.registryv2.put_image(
-            ctx.registryv2,
-            dest_image_name,
-            result.manifest,
-            result.image_config,
+            image_config=result.image_config,
+            image_name=image_name_dest,
             # TODO: Select compressed_layer_files vs uncompressed_layer_files based on type(registryv2).
-            result.compressed_layer_files,
+            layer_files=result.compressed_layer_files,
+            manifest=result.manifest,
         )
         if ctx.registryv2.dry_run:
             LOGGER.info(
                 "Dry run completed for image: %s (%s)",
-                dest_image_name.resolve_name(),
+                image_name_dest.resolve_name(),
                 result.image_config.get_digest(),
             )
         else:
             LOGGER.info(
                 "Replicated new image: %s (%s)",
-                dest_image_name.resolve_name(),
+                image_name_dest.resolve_name(),
                 result.image_config.get_digest(),
             )
     except Exception as exception:  # pylint: disable=broad-except
@@ -155,8 +154,8 @@ async def copy(context: Context, dest_image_name: ImageName, src_image_name: Ima
 
 
 @cli.command()
-@click.argument("src_image_name", callback=to_image_name, required=True)
-@click.argument("dest_image_name", callback=to_image_name, required=True)
+@click.argument("image_name_src", callback=to_image_name, required=True)
+@click.argument("image_name_dest", callback=to_image_name, required=True)
 @click.option(
     "-s",
     "--signature-type",
@@ -192,12 +191,12 @@ async def copy(context: Context, dest_image_name: ImageName, src_image_name: Ima
 @async_command
 async def sign(
     context: Context,
-    dest_image_name: ImageName,
+    image_name_dest: ImageName,
     keyid: str,
     keypass: str,
     signature_type: "sign",
     sigtype: str,
-    src_image_name: ImageName,
+    image_name_src: ImageName,
 ) -> RegistryV2SignImage:
     """Signs an image."""
 
@@ -220,22 +219,21 @@ async def sign(
             raise RuntimeError(f"Unknown signature type: {sigtype}!")
 
         result = await ctx.registryv2.sign_image(
-            signer,
-            src_image_name,
-            ctx.registryv2,
-            dest_image_name,
-            SignatureTypes[signature_type.upper()],
+            image_name_dest=image_name_dest,
+            image_name_src=image_name_src,
+            signature_type=SignatureTypes[signature_type.upper()],
+            signer=signer,
         )
         if ctx.registryv2.dry_run:
             LOGGER.info(
                 "Dry run completed for image: %s (%s)",
-                dest_image_name.resolve_name(),
+                image_name_dest.resolve_name(),
                 result.image_config.get_digest(),
             )
         else:
             LOGGER.info(
                 "Created new image: %s (%s)",
-                dest_image_name.resolve_name(),
+                image_name_dest.resolve_name(),
                 result.image_config.get_digest(),
             )
     except Exception as exception:  # pylint: disable=broad-except

@@ -130,7 +130,7 @@ class PKISigner(Signer):
 
     # Signer Members
 
-    async def sign(self, data: bytes) -> str:
+    async def sign(self, *, data: bytes) -> str:
         digest = SHA256.new(data)
         private_signer = await self.get_private_signer()
         raw_signature = private_signer.sign(digest)
@@ -141,7 +141,7 @@ class PKISigner(Signer):
             PKISigner.TAG_END,
         )
 
-    async def verify(self, data: bytes, signature: str) -> PKISignerVerify:
+    async def verify(self, *, data: bytes, signature: str) -> PKISignerVerify:
         # if not self.public_key_path:
         #    raise RuntimeError("Cannot verify without public key!")
         buffer = base64.b64decode(signature.split()[3])

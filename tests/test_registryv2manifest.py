@@ -75,10 +75,6 @@ def test_get_config_digest(registry_v2_manifest: RegistryV2Manifest):
         "8f1196ff19e7b5c5861de192ae77e8d7a692fcbca2dd3174d324980f72ab49bf"
     )
     assert registry_v2_manifest.get_config_digest() == formattedsha256
-    assert (
-        registry_v2_manifest.get_config_digest(ImageName.parse("ignored"))
-        == formattedsha256
-    )
 
 
 def test_get_layers(registry_v2_manifest: RegistryV2Manifest):
@@ -88,4 +84,3 @@ def test_get_layers(registry_v2_manifest: RegistryV2Manifest):
         "sha256:1403b179e2c9df4f57e9ea94e32882739c6b3d75ed756d4e67fcc424288c29cc",
     ]
     assert registry_v2_manifest.get_layers() == layers
-    assert registry_v2_manifest.get_layers(ImageName.parse("ignored")) == layers

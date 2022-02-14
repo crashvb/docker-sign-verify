@@ -16,12 +16,10 @@ from typing import cast
 import aiofiles
 import pytest
 
-from aiotempfile.aiotempfile import open as aiotempfile
 from docker_registry_client_async import (
     DockerAuthentication,
     DockerMediaTypes,
     DockerRegistryClientAsync,
-    FormattedSHA256,
     ImageName,
 )
 from pytest_docker_registry_fixtures import (
@@ -55,7 +53,7 @@ from .stubs import (
     FakeSigner,
     FakeSignerVerify,
 )
-from .testutils import get_test_data_path, hash_file
+from .testutils import get_test_data_path
 
 LOGGER = logging.getLogger(__name__)
 
@@ -172,7 +170,7 @@ async def test__sign_image_config(
     image_name: ImageName,
 ):
     """Test adding signature(s) to the image configuration."""
-    result = await fake_registry_v2_image_source.quick_sign(image_name)
+    result = await fake_registry_v2_image_source.quick_sign(image_name=image_name)
     assert result
 
     image_config = result.image_config
@@ -221,14 +219,18 @@ async def test__verify_image_config(
 
     # 1. Pre signature
     # pylint: disable=protected-access
-    assertions(await fake_registry_v2_image_source._verify_image_config(image_name))
+    assertions(
+        await fake_registry_v2_image_source._verify_image_config(image_name=image_name)
+    )
 
     # Sign
-    await fake_registry_v2_image_source.quick_sign(image_name)
+    await fake_registry_v2_image_source.quick_sign(image_name=image_name)
 
     # 2. Post signature
     # pylint: disable=protected-access
-    assertions(await fake_registry_v2_image_source._verify_image_config(image_name))
+    assertions(
+        await fake_registry_v2_image_source._verify_image_config(image_name=image_name)
+    )
 
 
 @pytest.mark.online
@@ -242,36 +244,9 @@ async def test_get_image_config(
         "Retrieving image configuration for: %s ...", known_good_image.image_name
     )
     image_config = await registry_v2_image_source.get_image_config(
-        known_good_image.image_name, **kwargs
+        image_name=known_good_image.image_name, **kwargs
     )
     assert isinstance(image_config, ImageConfig)
-
-
-@pytest.mark.online
-async def test_get_image_layer_to_disk(
-    registry_v2_image_source: RegistryV2,
-    known_good_image: TypingKnownGoodImage,
-    **kwargs,
-):
-    """Test layer retrieval to disk."""
-    LOGGER.debug("Retrieving manifest for: %s ...", known_good_image.image_name)
-    manifest = await registry_v2_image_source.get_manifest(
-        known_good_image.image_name, **kwargs
-    )
-    config_digest = manifest.get_config_digest()
-
-    LOGGER.debug(
-        "Retrieving blob: %s/%s ...", known_good_image.image_name, config_digest
-    )
-    async with aiotempfile(
-        mode="w+b", prefix=f"tmp{test_get_image_layer_to_disk.__name__}"
-    ) as file:
-        result = await registry_v2_image_source.get_image_layer_to_disk(
-            known_good_image.image_name, config_digest, file, **kwargs
-        )
-        LOGGER.debug("Verifying digest of written file ...")
-        assert await hash_file(file.name) == config_digest
-    assert result.digest == config_digest
 
 
 @pytest.mark.online
@@ -283,7 +258,7 @@ async def test_get_manifest(
     """Test manifest retrieval."""
     LOGGER.debug("Retrieving manifest for: %s ...", known_good_image.image_name)
     manifest = await registry_v2_image_source.get_manifest(
-        known_good_image.image_name, **kwargs
+        image_name=known_good_image.image_name, **kwargs
     )
     assert isinstance(manifest, RegistryV2Manifest)
     assert manifest.get_digest() == known_good_image.image_name.resolve_digest()
@@ -309,29 +284,11 @@ async def test_get_manifest_list(
     )
 
     LOGGER.debug("Retrieving manifest list for: %s ...", image_name)
-    manifest = await registry_v2_image_source.get_manifest(image_name, **kwargs)
+    manifest = await registry_v2_image_source.get_manifest(
+        image_name=image_name, **kwargs
+    )
     assert isinstance(manifest, RegistryV2ManifestList)
     assert manifest.get_digest() == image_name.resolve_digest()
-
-
-@pytest.mark.online
-async def test_layer_exists(
-    registry_v2_image_source: RegistryV2,
-    known_good_image: TypingKnownGoodImage,
-    **kwargs,
-):
-    """Test layer existence."""
-    LOGGER.debug("Retrieving manifest for: %s ...", known_good_image.image_name)
-    manifest = await registry_v2_image_source.get_manifest(
-        known_good_image.image_name, **kwargs
-    )
-    layer = manifest.get_layers()[-1]
-    assert await registry_v2_image_source.layer_exists(
-        known_good_image.image_name, layer, **kwargs
-    )
-    assert not await registry_v2_image_source.layer_exists(
-        known_good_image.image_name, FormattedSHA256("0" * 64), **kwargs
-    )
 
 
 @pytest.mark.online_modification
@@ -344,18 +301,17 @@ async def test_put_image(
     image_name = known_good_image.image_name
     LOGGER.debug("Retrieving image: %s ...", image_name)
     response = await registry_v2_image_source.verify_image_integrity(
-        image_name, **kwargs
+        image_name=image_name, **kwargs
     )
 
     image_name.tag += __name__
 
     LOGGER.debug("Storing image: %s ...", image_name)
     await registry_v2_image_source.put_image(
-        registry_v2_image_source,
-        image_name,
-        response.manifest,
-        response.image_config,
-        response.compressed_layer_files,
+        image_config=response.image_config,
+        image_name=image_name,
+        layer_files=response.compressed_layer_files,
+        manifest=response.manifest,
         **kwargs,
     )
 
@@ -375,7 +331,7 @@ async def test_put_image_config(
         known_good_image.image_name,
     )
     image_config = await registry_v2_image_source.get_image_config(
-        known_good_image.image_name, **kwargs
+        image_name=known_good_image.image_name, **kwargs
     )
 
     # Modify the configuration
@@ -388,39 +344,9 @@ async def test_put_image_config(
         "Storing modified image configuration: %s ...", image_config.get_digest()
     )
     response = await registry_v2_image_source.put_image_config(
-        known_good_image.image_name, image_config, **kwargs
+        image_config=image_config, image_name=known_good_image.image_name, **kwargs
     )
     # Note: If NoneType, digest may already exist
-    assert response.digest == image_config.get_digest()
-
-
-@pytest.mark.online_modification
-async def test_put_image_layer(
-    registry_v2_image_source: RegistryV2,
-    known_good_image: TypingKnownGoodImage,
-    **kwargs,
-):
-    """Test image layer assignment."""
-    LOGGER.debug(
-        "Retrieving image configuration for: %s ...",
-        known_good_image.image_name,
-    )
-    image_config = await registry_v2_image_source.get_image_config(
-        known_good_image.image_name, **kwargs
-    )
-
-    # Modify the configuration
-    _json = image_config.get_json()
-    labels = image_config._get_labels(_json)
-    labels["foo"] = datetime.now().strftime("%d%m%Y%H%M%S")
-    image_config._set_json(_json)
-
-    LOGGER.debug(
-        "Storing modified image configuration: %s ...", image_config.get_digest()
-    )
-    response = await registry_v2_image_source.put_image_layer(
-        known_good_image.image_name, image_config.get_bytes(), **kwargs
-    )
     assert response.digest == image_config.get_digest()
 
 
@@ -437,7 +363,7 @@ async def test_put_image_layer_from_disk(
         known_good_image.image_name,
     )
     image_config = await registry_v2_image_source.get_image_config(
-        known_good_image.image_name, **kwargs
+        image_name=known_good_image.image_name, **kwargs
     )
 
     # Modify the configuration
@@ -456,61 +382,9 @@ async def test_put_image_layer_from_disk(
     )
     async with aiofiles.open(path, mode="r+b") as file:
         response = await registry_v2_image_source.put_image_layer_from_disk(
-            known_good_image.image_name, file, **kwargs
+            file=file, image_name=known_good_image.image_name, **kwargs
         )
     assert response.digest == image_config.get_digest()
-
-
-@pytest.mark.online_modification
-async def test_put_manifest(
-    known_good_image: TypingKnownGoodImage,
-    registry_v2_image_source: RegistryV2,
-    **kwargs,
-):
-    """Test manifest assignment."""
-    LOGGER.debug("Retrieving manifest for: %s ...", known_good_image.image_name)
-    manifest = await registry_v2_image_source.get_manifest(
-        known_good_image.image_name, **kwargs
-    )
-    assert isinstance(manifest, RegistryV2Manifest)
-    assert manifest.get_digest() == known_good_image.image_name.resolve_digest()
-
-    LOGGER.debug("Storing manifest for: %s ...", known_good_image.image_name)
-    response = await registry_v2_image_source.put_manifest(
-        manifest, known_good_image.image_name, **kwargs
-    )
-    assert response.digest == known_good_image.image_name.resolve_digest()
-
-
-@pytest.mark.online_modification
-@pytest.mark.parametrize("image", get_test_data())
-async def test_put_manifest_list(
-    docker_registry_secure: DockerRegistrySecure,
-    image: TypingGetTestData,
-    registry_v2_image_source: RegistryV2,
-    **kwargs,
-):
-    """Test manifest list assignment."""
-    if not image.tag_resolves_to_manifest_list:
-        pytest.skip(f"Image {image.image} does not reference a manifest list.")
-
-    image_name = ImageName(
-        image.image,
-        digest=image.digests[DockerMediaTypes.DISTRIBUTION_MANIFEST_LIST_V2],
-        endpoint=docker_registry_secure.endpoint,
-        tag=image.tag,
-    )
-
-    LOGGER.debug("Retrieving manifest list for: %s ...", image_name)
-    manifest_list = await registry_v2_image_source.get_manifest(image_name, **kwargs)
-    assert isinstance(manifest_list, RegistryV2ManifestList)
-    assert manifest_list.get_digest() == image_name.resolve_digest()
-
-    LOGGER.debug("Storing manifest list for: %s ...", image_name)
-    response = await registry_v2_image_source.put_manifest(
-        manifest_list, image_name, **kwargs
-    )
-    assert response.digest == image_name.resolve_digest()
 
 
 @pytest.mark.online_modification
@@ -549,11 +423,10 @@ async def test_sign_image_same_image_source(
 
     # 1. Single signature
     response = await registry_v2_image_source.sign_image(
-        FakeSigner(),
-        known_good_image.image_name,
-        registry_v2_image_source,
-        dest_image_name,
-        SignatureTypes.SIGN,
+        image_name_src=known_good_image.image_name,
+        image_name_dest=dest_image_name,
+        signature_type=SignatureTypes.SIGN,
+        signer=FakeSigner(),
         **kwargs,
     )
     assertions(response)
@@ -594,7 +467,7 @@ async def test_verify_image_integrity(
 
     # 1. Unsigned
     response = await registry_v2_image_source.verify_image_integrity(
-        known_good_image.image_name, **kwargs
+        image_name=known_good_image.image_name, **kwargs
     )
     assertions(response)
 
@@ -612,17 +485,21 @@ async def test_verify_image_signatures(
     """Test verifying the signatures within the image configuration."""
     # An exception should be raised if the image configuration is not signed
     with pytest.raises(NoSignatureError) as exception:
-        await fake_registry_v2_image_source.verify_image_signatures(image_name)
+        await fake_registry_v2_image_source.verify_image_signatures(
+            image_name=image_name
+        )
     assert str(exception.value) == "Image does not contain any signatures!"
 
     # Sign
-    await fake_registry_v2_image_source.quick_sign(image_name)
+    await fake_registry_v2_image_source.quick_sign(image_name=image_name)
 
     # Replace the class method for resolving signature providers ...
     original_method = Signer.for_signature
     Signer.for_signature = _signer_for_signature
 
-    result = await fake_registry_v2_image_source.verify_image_signatures(image_name)
+    result = await fake_registry_v2_image_source.verify_image_signatures(
+        image_name=image_name
+    )
     assert result.image_config
     assert result.signatures
 
@@ -631,7 +508,9 @@ async def test_verify_image_signatures(
     fake_registry_v2_image_source.signer_kwargs = {
         FakeSigner.__name__: {"assignable_value": assignable_value}
     }
-    result = await fake_registry_v2_image_source.verify_image_signatures(image_name)
+    result = await fake_registry_v2_image_source.verify_image_signatures(
+        image_name=image_name
+    )
     assert result.image_config
     assert result.signatures
     fake_signer_verify = cast(FakeSignerVerify, result.signatures.results[0])

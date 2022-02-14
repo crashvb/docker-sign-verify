@@ -19,7 +19,6 @@ from docker_registry_client_async import (
 )
 from docker_registry_client_async.typing import (
     DockerRegistryClientAsyncPutBlobUpload,
-    DockerRegistryClientAsyncPutManifest,
 )
 from docker_registry_client_async.utils import must_be_equal
 
@@ -59,12 +58,6 @@ class RegistryV2VerifyImageConfig(NamedTuple):
     image_layers: List[FormattedSHA256]
     manifest: Manifest
     manifest_layers: List[FormattedSHA256]
-
-
-class RegistryV2GetImageLayerToDisk(NamedTuple):
-    # pylint: disable=missing-class-docstring
-    digest: FormattedSHA256
-    size: int
 
 
 class RegistryV2SignImage(NamedTuple):
@@ -148,18 +141,19 @@ class RegistryV2:
 
     async def _sign_image_config(
         self,
-        signer: Signer,
+        *,
         image_name: ImageName,
         signature_type: SignatureTypes,
+        signer: Signer,
         **kwargs,
     ) -> RegistryV2SignImageConfig:
         """
         Verifies an image, then signs it without storing it in the image source.
 
         Args:
-            signer: The signer used to create the signature value.
             image_name: The image name.
             signature_type: Specifies what type of signature action to perform.
+            signer: The signer used to create the signature value.
 
         Returns:
             NamedTuple:
@@ -168,15 +162,16 @@ class RegistryV2:
                 verify_image_data: as defined by :func:~docker_sign_verify.RegistryV2.verify_image_integrity.
         """
         # Verify image integrity (we use the verified values from this point on)
-        data = await self.verify_image_integrity(image_name, **kwargs)
+        data = await self.verify_image_integrity(image_name=image_name, **kwargs)
 
         # Perform the desired signing operation
         try:
-            signature_value = await data.image_config.sign(signer, signature_type)
-        except Exception:
+            signature_value = await data.image_config.sign(
+                signature_type=signature_type, signer=signer
+            )
+        finally:
             for file in data.compressed_layer_files + data.uncompressed_layer_files:
                 file.close()
-            raise
 
         return RegistryV2SignImageConfig(
             image_config=data.image_config,
@@ -185,7 +180,7 @@ class RegistryV2:
         )
 
     async def _verify_image_config(
-        self, image_name: ImageName, **kwargs
+        self, *, image_name: ImageName, **kwargs
     ) -> RegistryV2VerifyImageConfig:
         """
         Verifies the integration of an image configuration against metadata contained within a manifest.
@@ -203,17 +198,17 @@ class RegistryV2:
 
         # Retrieve the image configuration digest and layers identifiers from the manifest ...
         LOGGER.debug("Verifying Integrity: %s ...", image_name.resolve_name())
-        manifest = await self.get_manifest(image_name, **kwargs)
+        manifest = await self.get_manifest(image_name=image_name, **kwargs)
         LOGGER.debug("    manifest digest: %s", xellipsis(manifest.get_digest()))
-        config_digest = manifest.get_config_digest(image_name)
+        config_digest = manifest.get_config_digest()
         LOGGER.debug("    config digest: %s", xellipsis(config_digest))
-        manifest_layers = manifest.get_layers(image_name)
+        manifest_layers = manifest.get_layers()
         LOGGER.debug("    manifest layers:")
         for layer in manifest_layers:
             LOGGER.debug("        %s", xellipsis(layer))
 
         # Retrieve the image configuration ...
-        image_config = await self.get_image_config(image_name, **kwargs)
+        image_config = await self.get_image_config(image_name=image_name, **kwargs)
         config_digest_canonical = image_config.get_digest_canonical()
         LOGGER.debug(
             "    config digest (canonical): %s", xellipsis(config_digest_canonical)
@@ -240,7 +235,7 @@ class RegistryV2:
             manifest_layers=manifest_layers,
         )
 
-    async def get_image_config(self, image_name: ImageName, **kwargs) -> ImageConfig:
+    async def get_image_config(self, *, image_name: ImageName, **kwargs) -> ImageConfig:
         """
         Retrieves an image configuration (config.json).
 
@@ -250,31 +245,14 @@ class RegistryV2:
         Returns:
             The image configuration.
         """
-        manifest = await self.get_manifest(image_name, **kwargs)
-        config_digest = manifest.get_config_digest()
+        manifest = await self.get_manifest(image_name=image_name, **kwargs)
         response = await self.docker_registry_client_async.get_blob(
-            image_name, config_digest, **kwargs
+            image_name, manifest.get_config_digest(), **kwargs
         )
         return ImageConfig(response.blob)
 
-    async def get_image_layer_to_disk(
-        self, image_name: ImageName, layer: FormattedSHA256, file, **kwargs
-    ) -> RegistryV2GetImageLayerToDisk:
-        """
-        Retrieves a single image layer stored to disk.
-
-        Args:
-            image_name: The image name.
-            layer: The layer identifier in the form: <hash type>:<digest value>.
-            file: File in which to store the image layer.
-        """
-        response = await self.docker_registry_client_async.get_blob_to_disk(
-            image_name, layer, file, **kwargs
-        )
-        return RegistryV2GetImageLayerToDisk(digest=response.digest, size=response.size)
-
     async def get_manifest(
-        self, image_name: ImageName = None, **kwargs
+        self, *, image_name: ImageName = None, **kwargs
     ) -> Union[Manifest, RegistryV2Manifest, RegistryV2ManifestList]:
         """
         Retrieves the manifest for a given image.
@@ -285,7 +263,6 @@ class RegistryV2:
         Returns:
             The image source-specific manifest.
         """
-        # FIXME: How do we handle manifest lists?
         response = await self.docker_registry_client_async.get_manifest(
             image_name, **kwargs
         )
@@ -297,75 +274,56 @@ class RegistryV2:
 
         return manifest
 
-    async def layer_exists(
-        self, image_name: ImageName, layer: FormattedSHA256, **kwargs
-    ) -> bool:
-        """
-        Checks if a given image layer exists.
-
-        Args:
-            image_name: The image name.
-            layer: The layer identifier in the form: <hash type>:<digest value>.
-
-        Returns:
-            bool: True if the layer exists, False otherwise.
-        """
-        response = await self.docker_registry_client_async.head_blob(
-            image_name, layer, **kwargs
-        )
-        return response.result
-
     @check_dry_run
     async def put_image(
         self,
-        image_source,
-        image_name: ImageName,
-        manifest: Manifest,
+        *,
         image_config: ImageConfig,
+        image_name: ImageName,
         layer_files: List,
+        manifest: Manifest,
         **kwargs,
     ):
         """
         Stores a given image (manifest, image_config, and layers) from another image source.
 
         Args:
-            image_source: The source image source.
-            image_name: The name of the image being stored.
-            manifest: The image source-specific manifest to be stored, in source image source format.
             image_config: The image configuration to be stored.
+            image_name: The name of the image being stored.
             layer_files: List of files from which to read the layer content, in source image source format.
+            manifest: The image source-specific manifest to be stored, in source image source format.
         """
+        # TODO: Include manifest list processing here ...
+
         # Replicate all of the image layers ...
         LOGGER.debug("    Replicating image layers ...")
         manifest_layers = manifest.get_layers()
         for i, manifest_layer in enumerate(manifest_layers):
-            if not await self.layer_exists(image_name, manifest_layer, **kwargs):
-                if isinstance(image_source, RegistryV2):
-                    await self.put_image_layer_from_disk(
-                        image_name, layer_files[i], **kwargs
-                    )
-                else:
-                    raise NotImplementedError(
-                        f"Translation from '{type(image_source)}' to '{type(self)}' is not supported!"
-                    )
+            if not (
+                await self.docker_registry_client_async.head_blob(
+                    image_name=image_name, digest=manifest_layer, **kwargs
+                )
+            ).result:
+                await self.put_image_layer_from_disk(
+                    file=layer_files[i], image_name=image_name, **kwargs
+                )
 
         # Replicate the image configuration ...
         LOGGER.debug("    Replicating image configuration ...")
-        await self.put_image_config(image_name, image_config, **kwargs)
+        await self.put_image_config(
+            image_config=image_config, image_name=image_name, **kwargs
+        )
 
         # Replicate the manifest ...
         LOGGER.debug("    Replicating image manifest ...")
-        if isinstance(image_source, RegistryV2):
-            await self.put_manifest(manifest, image_name, **kwargs)
-        else:
-            raise NotImplementedError(
-                f"Translation from '{type(image_source)}' to '{type(self)}' is not supported!"
-            )
+        await self.docker_registry_client_async.put_manifest(
+            image_name=image_name, manifest=manifest, **kwargs
+        )
 
     @check_dry_run
     async def put_image_config(
-        self, image_name: ImageName, image_config: ImageConfig, **kwargs
-    ):
+        self, *, image_name: ImageName, image_config: ImageConfig, **kwargs
+    ) -> Optional[DockerRegistryClientAsyncPutBlobUpload]:
         """
         Assigns an image configuration (config.json).
 
@@ -373,30 +331,22 @@ class RegistryV2:
             image_name: The image name.
             image_config: The image configuration to be assigned.
         """
-        if not await self.layer_exists(image_name, image_config.get_digest(), **kwargs):
-            return await self.put_image_layer(
-                image_name, image_config.get_bytes(), **kwargs
+        if not (
+            await self.docker_registry_client_async.head_blob(
+                image_name=image_name, digest=image_config.get_digest(), **kwargs
             )
-
-    @check_dry_run
-    async def put_image_layer(
-        self, image_name: ImageName, content, **kwargs
-    ) -> DockerRegistryClientAsyncPutBlobUpload:
-        """
-        Assigns a single image layer.
-
-        Args:
-            image_name: The image name.
-            content: The layer content.
-        """
-        response = await self.docker_registry_client_async.post_blob(
-            image_name, **kwargs
-        )
-        digest = FormattedSHA256.calculate(content)
-        return await self.docker_registry_client_async.put_blob_upload(
-            response.location, digest, data=content, **kwargs
-        )
-        # TODO: Should we check self.layer_exists(image_name, digest) here, like docker CLI does?
+        ).result:
+            content = image_config.get_bytes()
+            response = await self.docker_registry_client_async.post_blob(
+                image_name=image_name, **kwargs
+            )
+            return await self.docker_registry_client_async.put_blob_upload(
+                digest=FormattedSHA256.calculate(content),
+                location=response.location,
+                data=content,
+                **kwargs,
+            )
+        return None
 
     @check_dry_run
     async def put_image_layer_from_disk(
@@ -409,51 +359,35 @@ class RegistryV2:
             image_name: The image name.
             file: File from which to read the layer content.
         """
+        # TODO: Should we check self.layer_exists(image_name, digest) here, like docker CLI does?
         response = await self.docker_registry_client_async.post_blob(
-            image_name, **kwargs
+            image_name=image_name, **kwargs
         )
         # Note: PATCH is needed to retrieve the digest of the local content, needed by POST
         response = await self.docker_registry_client_async.patch_blob_upload_from_disk(
-            response.location, file, **kwargs
+            file=file, location=response.location, **kwargs
         )
         return await self.docker_registry_client_async.put_blob_upload(
-            response.location, response.digest, **kwargs
-        )
-        # TODO: Should we check self.layer_exists(image_name, digest) here, like docker CLI does?
-
-    @check_dry_run
-    async def put_manifest(
-        self, manifest: Manifest, image_name: ImageName = None, **kwargs
-    ) -> DockerRegistryClientAsyncPutManifest:
-        """
-        Assigns the manifest for a given image.
-
-        Args:
-            manifest: The image source-specific manifest to be assigned.
-            image_name: The name of the image for which to assign the manifest.
-        """
-        return await self.docker_registry_client_async.put_manifest(
-            image_name, manifest, **kwargs
+            digest=response.digest, location=response.location, **kwargs
         )
 
     async def sign_image(
         self,
-        signer: Signer,
-        src_image_name: ImageName,
-        dest_image_source: "RegistryV2",
-        dest_image_name: ImageName,
+        *,
+        image_name_dest: ImageName,
+        image_name_src: ImageName,
         signature_type: SignatureTypes = SignatureTypes.SIGN,
+        signer: Signer,
         **kwargs,
     ) -> RegistryV2SignImage:
         """
         Retrieves, verifies and signs the image, storing it in the destination image source.
 
         Args:
-            signer: The signer used to create the signature value.
-            src_image_name: The source image name.
-            dest_image_source: The destination image source into which to store the signed image.
-            dest_image_name: The description image name.
+            image_name_dest: The description image name.
+            image_name_src: The source image name.
             signature_type: Specifies what type of signature action to perform.
+            signer: The signer used to create the signature value.
 
         Returns:
             NamedTuple:
@@ -469,20 +403,23 @@ class RegistryV2:
             else "Signing"
             if signature_type == SignatureTypes.SIGN
             else "Resigning",
-            src_image_name.resolve_name(),
+            image_name_src.resolve_name(),
         )
 
-        dest_image_name = dest_image_name.clone()
-        if dest_image_name.resolve_digest():
-            dest_image_name.digest = None
+        image_name_dest = image_name_dest.clone()
+        if image_name_dest.resolve_digest():
+            image_name_dest.digest = None
             LOGGER.warning(
                 "It is not possible to store a signed image to a predetermined digest! Adjusted destination: %s",
-                dest_image_name.resolve_name(),
+                image_name_dest.resolve_name(),
             )
 
         # Generate a signed image configuration ...
         data = await self._sign_image_config(
-            signer, src_image_name, signature_type, **kwargs
+            image_name=image_name_src,
+            signature_type=signature_type,
+            signer=signer,
+            **kwargs,
         )
         LOGGER.debug("    Signature:\n%s", data.signature_value)
         image_config = data.image_config
@@ -499,24 +436,23 @@ class RegistryV2:
             verify_image_data=data.verify_image_data,
         )
 
-        await dest_image_source.put_image(
-            self,
-            dest_image_name,
-            manifest,
-            image_config,
-            data.verify_image_data.compressed_layer_files,
+        await self.put_image(
+            image_config=image_config,
+            image_name=image_name_dest,
+            layer_files=data.verify_image_data.compressed_layer_files,
+            manifest=manifest,
             **kwargs,
         )
 
-        dest_image_name.digest = manifest.get_digest()
+        image_name_dest.digest = manifest.get_digest()
 
         if not self.dry_run:
-            LOGGER.debug("Created new image: %s", dest_image_name.resolve_name())
+            LOGGER.debug("Created new image: %s", image_name_dest.resolve_name())
 
         return data
 
     async def verify_image_integrity(
-        self, image_name: ImageName, **kwargs
+        self, *, image_name: ImageName, **kwargs
     ) -> RegistryV2VerifyImageIntegrity:
         """
         Verifies that the image source data format is consistent with respect to the image configuration and image
@@ -532,7 +468,7 @@ class RegistryV2:
                 manifest: The image source-specific manifest file (archive, registry, repository).
                 uncompressed_layer_files: The list of uncompressed layer files on disk.
         """
-        data = await self._verify_image_config(image_name, **kwargs)
+        data = await self._verify_image_config(image_name=image_name, **kwargs)
 
         # Reconcile manifest layers and image layers (in order)...
         compressed_layer_files = []
@@ -543,8 +479,10 @@ class RegistryV2:
                 compressed_layer_files.append(
                     await aiotempfile(prefix="tmp-compressed")
                 )
-                data_compressed = await self.get_image_layer_to_disk(
-                    image_name, layer, compressed_layer_files[i], **kwargs
+                data_compressed = (
+                    await self.docker_registry_client_async.get_blob_to_disk(
+                        image_name, layer, compressed_layer_files[i], **kwargs
+                    )
                 )
                 must_be_equal(
                     layer,
@@ -585,7 +523,7 @@ class RegistryV2:
         )
 
     async def verify_image_signatures(
-        self, image_name: ImageName, **kwargs
+        self, *, image_name: ImageName, **kwargs
     ) -> RegistryV2VerifyImageSignatures:
         """
         Verifies that signatures contained within the image source data format are valid (that the image has not been
@@ -604,7 +542,7 @@ class RegistryV2:
         """
 
         # Verify image integrity (we use the verified values from this point on)
-        data = await self.verify_image_integrity(image_name, **kwargs)
+        data = await self.verify_image_integrity(image_name=image_name, **kwargs)
 
         # Verify image signatures ...
         try:

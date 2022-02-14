@@ -45,11 +45,11 @@ async def test_simple(pkisigner: PKISigner):
     data = b"TEST DATA"
 
     # Generate a signature for the test data ...
-    signature = await pkisigner.sign(data)
+    signature = await pkisigner.sign(data=data)
     assert "PKI SIGNATURE" in signature
 
     # Verify the generated signature against the test data ...
-    result = await pkisigner.verify(data, signature)
+    result = await pkisigner.verify(data=data, signature=signature)
     assert result.valid
     assert result.keypair_path == pkisigner.keypair_path
     assert result.type == "pki"
@@ -61,13 +61,13 @@ async def test_bad_data(pkisigner: PKISigner):
     data = b"TEST DATA"
 
     # Generate a signature for the test data ...
-    signature = await pkisigner.sign(data)
+    signature = await pkisigner.sign(data=data)
     assert "PKI SIGNATURE" in signature
 
     data += b"tampertampertamper"
 
     # Verify the generated signature against the test data ...
-    result = await pkisigner.verify(data, signature)
+    result = await pkisigner.verify(data=data, signature=signature)
     assert not result.valid
     assert result.keypair_path == pkisigner.keypair_path
     assert result.type == "pki"

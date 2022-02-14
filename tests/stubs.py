@@ -115,16 +115,16 @@ class FakeSigner(Signer):
         self.assignable_value = assignable_value
         self.signature_value = signature_value
 
-    def _get_signature(self, data: bytes) -> str:
+    def _get_signature(self, *, data: bytes) -> str:
         return self.signature_value.format(data)
 
     # Signer Members
 
-    async def sign(self, data: bytes) -> str:
-        return self._get_signature(data)
+    async def sign(self, *, data: bytes) -> str:
+        return self._get_signature(data=data)
 
-    async def verify(self, data: bytes, signature: str) -> FakeSignerVerify:
-        valid = signature == self._get_signature(data)
+    async def verify(self, *, data: bytes, signature: str) -> FakeSignerVerify:
+        valid = signature == self._get_signature(data=data)
         result = FakeSignerVerify(
             assignable_value=self.assignable_value,
             signer_long=f"{''.ljust(8)}This is a fake signature for testing.",
@@ -149,7 +149,7 @@ class FakeRegistryV2NoLabels(RegistryV2):
         self.manifest = None
         self.request = request
 
-    async def quick_sign(self, image_name: ImageName) -> RegistryV2SignImageConfig:
+    async def quick_sign(self, *, image_name: ImageName) -> RegistryV2SignImageConfig:
         """
         Signs a given image in an image source using a fake signer and returns the results.
         This method is a testing shortcut.
@@ -162,7 +162,9 @@ class FakeRegistryV2NoLabels(RegistryV2):
         """
         # pylint: disable=protected-access
         result = await self._sign_image_config(
-            FakeSigner(), image_name, SignatureTypes.SIGN
+            image_name=image_name,
+            signature_type=SignatureTypes.SIGN,
+            signer=FakeSigner(),
         )
 
         self.config = result.image_config
@@ -172,68 +174,50 @@ class FakeRegistryV2NoLabels(RegistryV2):
         )
         return result
 
-    async def get_image_config(self, image_name: ImageName, **kwargs) -> ImageConfig:
+    async def get_image_config(self, *, image_name: ImageName, **kwargs) -> ImageConfig:
         if not self.config:
             config = get_test_data(self.request, __name__, "stub_config.json")
             self.config = ImageConfig(config)
         return self.config
 
-    async def get_image_layer_to_disk(
-        self, image_name: ImageName, layer: str, file, **kwargs
-    ):
-        raise RuntimeError("Logic error; method should not be invoked!")
-
-    async def get_manifest(self, image_name: ImageName = None, **kwargs) -> Manifest:
+    async def get_manifest(self, *, image_name: ImageName = None, **kwargs) -> Manifest:
         if not self.manifest:
             manifest = get_test_data(self.request, __name__, "stub_manifest.json")
             self.manifest = RegistryV2Manifest(manifest)
         return self.manifest
 
-    async def layer_exists(
-        self, image_name: ImageName, layer: FormattedSHA256, **kwargs
-    ) -> bool:
-        return self.does_layer_exists
-
     async def put_image(
         self,
-        image_source,
-        image_name: ImageName,
-        manifest: Manifest,
+        *,
         image_config: ImageConfig,
+        image_name: ImageName,
         layer_files: List,
+        manifest: Manifest,
         **kwargs,
     ):
         raise RuntimeError("Logic error; method should not be invoked!")
 
     async def put_image_config(
-        self, image_name: ImageName, image_config: ImageConfig, **kwargs
+        self, *, image_config: ImageConfig, image_name: ImageName, **kwargs
     ):
         raise RuntimeError("Logic error; method should not be invoked!")
 
-    async def put_image_layer(self, image_name: ImageName, content, **kwargs):
-        raise RuntimeError("Logic error; method should not be invoked!")
-
-    async def put_image_layer_from_disk(self, image_name: ImageName, file, **kwargs):
-        raise RuntimeError("Logic error; method should not be invoked!")
-
-    async def put_manifest(
-        self, manifest: Manifest, image_name: ImageName = None, **kwargs
-    ):
+    async def put_image_layer_from_disk(self, *, image_name: ImageName, file, **kwargs):
         raise RuntimeError("Logic error; method should not be invoked!")
 
     async def sign_image(
         self,
-        signer: Signer,
-        src_image_name: ImageName,
-        dest_image_source,
-        dest_image_name: ImageName,
+        *,
+        image_name_dest: ImageName,
+        image_name_src: ImageName,
         signature_type: SignatureTypes = SignatureTypes.SIGN,
+        signer: Signer,
         **kwargs,
     ):
         raise RuntimeError("Logic error; method should not be invoked!")
 
-    async def verify_image_integrity(self, image_name: ImageName, **kwargs):
-        data = await self._verify_image_config(image_name)
+    async def verify_image_integrity(self, *, image_name: ImageName, **kwargs):
+        data = await self._verify_image_config(image_name=image_name)
 
         # LGTM ...
 

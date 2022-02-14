@@ -69,11 +69,11 @@ async def test_simple(gpgsigner: GPGSigner):
     data = b"TEST DATA"
 
     # Generate a signature for the test data ...
-    signature = await gpgsigner.sign(data)
+    signature = await gpgsigner.sign(data=data)
     assert "PGP SIGNATURE" in signature
 
     # Verify the generated signature against the test data ...
-    result = await gpgsigner.verify(data, signature)
+    result = await gpgsigner.verify(data=data, signature=signature)
     assert result.fingerprint == gpgsigner.keyid
     assert gpgsigner.keyid.endswith(result.key_id)
     assert result.status == "signature valid"
@@ -86,12 +86,12 @@ async def test_bad_data(gpgsigner: GPGSigner):
     data = b"TEST DATA"
 
     # Generate a signature for the test data ...
-    signature = await gpgsigner.sign(data)
+    signature = await gpgsigner.sign(data=data)
     assert "PGP SIGNATURE" in signature
 
     data += b"tampertampertamper"
 
     # Verify the generated signature against the test data ...
-    result = await gpgsigner.verify(data, signature)
+    result = await gpgsigner.verify(data=data, signature=signature)
     assert not result.valid
     assert result.status != "signature valid"

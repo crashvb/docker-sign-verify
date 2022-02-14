@@ -279,9 +279,9 @@ async def test_sign(
         passphrase=gnupg_keypair.passphrase,
         homedir=gnupg_keypair.gnupg_home,
     )
-    sig = await image_config.sign(signer)
+    sig = await image_config.sign(signer=signer)
     assert "PGP SIGNATURE" in sig
-    sig_signed = await image_config_signed.sign(signer)
+    sig_signed = await image_config_signed.sign(signer=signer)
     assert "PGP SIGNATURE" in sig_signed
 
     # Previously unsigned configurations should now contain the new signature.
@@ -315,9 +315,11 @@ async def test_sign_endorse(
         passphrase=gnupg_keypair.passphrase,
         homedir=gnupg_keypair.gnupg_home,
     )
-    sig = await image_config.sign(signer, SignatureTypes.ENDORSE)
+    sig = await image_config.sign(signature_type=SignatureTypes.ENDORSE, signer=signer)
     assert "PGP SIGNATURE" in sig
-    sig_signed = await image_config_signed.sign(signer, SignatureTypes.ENDORSE)
+    sig_signed = await image_config_signed.sign(
+        signature_type=SignatureTypes.ENDORSE, signer=signer
+    )
     assert "PGP SIGNATURE" in sig_signed
 
     # Previously unsigned configurations should now contain the new signature.
@@ -349,9 +351,11 @@ async def test_sign_resign(
         passphrase=gnupg_keypair.passphrase,
         homedir=gnupg_keypair.gnupg_home,
     )
-    sig = await image_config.sign(signer, SignatureTypes.RESIGN)
+    sig = await image_config.sign(signature_type=SignatureTypes.RESIGN, signer=signer)
     assert "PGP SIGNATURE" in sig
-    sig_signed = await image_config_signed.sign(signer, SignatureTypes.RESIGN)
+    sig_signed = await image_config_signed.sign(
+        signature_type=SignatureTypes.RESIGN, signer=signer
+    )
     assert "PGP SIGNATURE" in sig_signed
 
     # Previously unsigned configurations should now contain the new signature.
@@ -383,7 +387,7 @@ async def test_sign_endorse_recursive(image_config: ImageConfig):
     ):
         action = f"X{signature_type.name}"
         signer = FakeSigner(f"[{iteration}-{action: <8}: {{0}}]")
-        await config.sign(signer, signature_type)
+        await config.sign(signature_type=signature_type, signer=signer)
         stack.append({"name": f"{iteration}-{action}", "image_config": config})
 
     iterations = 6
@@ -408,7 +412,7 @@ async def test_sign_endorse_recursive(image_config: ImageConfig):
                 if f"X{SignatureTypes.ENDORSE.name}" in signature.signature:
                     # Endorsement digests should include all entities of a lower order.
                     temp = frame["image_config"].clone()
-                    temp.set_signature_list(temp.get_signature_list()[:sig])
+                    temp.set_signature_list(signatures=temp.get_signature_list()[:sig])
                     assert signature.digest == temp.get_digest_canonical()
                     assert temp.get_digest_canonical() in signature.signature
                 else:
@@ -453,7 +457,7 @@ async def test_verify_signatures(
     assert str(exception.value) == "Image does not contain any signatures!"
 
     # Sign a previously unsigned configuration, so that only the new signature type is present.
-    signature = await image_config.sign(signer)
+    signature = await image_config.sign(signer=signer)
 
     # Attempt to verify the signatures using the default trust store ...
     response = await image_config.verify_signatures()
@@ -484,7 +488,7 @@ async def test_verify_signatures_manipulated_signatures(
     )
 
     # Add a single signature ...
-    await image_config.sign(signer)
+    await image_config.sign(signer=signer)
     response = await image_config.verify_signatures(
         signer_kwargs={GPGSigner.__name__: {"homedir": gnupg_keypair.gnupg_home}}
     )
@@ -497,7 +501,7 @@ async def test_verify_signatures_manipulated_signatures(
         digest=FormattedSHA256.calculate(b"tampertampertamper"),
         signature=temp[0].signature,
     )
-    image_config.set_signature_list(temp)
+    image_config.set_signature_list(signatures=temp)
 
     # An exception should be raised if digest value from the signature does not match the canonical digest of the image
     # configuration (without any signatures).
@@ -506,8 +510,8 @@ async def test_verify_signatures_manipulated_signatures(
     assert str(exception.value).startswith("Image config canonical digest mismatch:")
 
     # Restore the unmodified signature and endorse ...
-    image_config.set_signature_list(signatures)
-    await image_config.sign(signer, SignatureTypes.ENDORSE)
+    image_config.set_signature_list(signatures=signatures)
+    await image_config.sign(signature_type=SignatureTypes.ENDORSE, signer=signer)
     response = await image_config.verify_signatures(
         signer_kwargs={GPGSigner.__name__: {"homedir": gnupg_keypair.gnupg_home}}
     )
@@ -520,7 +524,7 @@ async def test_verify_signatures_manipulated_signatures(
         digest=FormattedSHA256.calculate(b"tampertampertamper"),
         signature=temp[1].signature,
     )
-    image_config.set_signature_list(temp)
+    image_config.set_signature_list(signatures=temp)
 
     # An exception should be raised if digest value from the signature does not match the canonical digest of the image
     # configuration (including the first signature).
@@ -541,7 +545,7 @@ async def test_minimal(gnupg_keypair: GnuPGKeypair):
     # Note: At a minimum, [Cc]onfig key must exist with non-null value
     image_config = ImageConfig(b'{"Config":{}}')
     config_digest_canonical = image_config.get_digest_canonical()
-    signature = await image_config.sign(signer)
+    signature = await image_config.sign(signer=signer)
     assert "PGP SIGNATURE" in signature
 
     # A signature should always be able to be added ...
