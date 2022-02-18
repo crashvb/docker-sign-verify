@@ -8,6 +8,8 @@ import logging
 import os
 import tempfile
 
+from time import time
+
 import pytest
 
 from docker_sign_verify import PKISigner, Signer
@@ -42,7 +44,8 @@ async def test_for_signature():
 async def test_simple(pkisigner: PKISigner):
     """Test configuration signing and verification using PKI."""
 
-    data = b"TEST DATA"
+    data = f"TEST DATA: {time()}".encode(encoding="utf-8")
+    LOGGER.debug("Using test data: %s", data)
 
     # Generate a signature for the test data ...
     signature = await pkisigner.sign(data=data)
@@ -58,13 +61,15 @@ async def test_simple(pkisigner: PKISigner):
 async def test_bad_data(pkisigner: PKISigner):
     """Test configuration signing and verification using PKI with bad data."""
 
-    data = b"TEST DATA"
+    data = f"TEST DATA: {time()}".encode(encoding="utf-8")
+    LOGGER.debug("Using test data: %s", data)
 
     # Generate a signature for the test data ...
     signature = await pkisigner.sign(data=data)
     assert "PKI SIGNATURE" in signature
 
     data += b"tampertampertamper"
+    LOGGER.debug("Using tampered data: %s", data)
 
     # Verify the generated signature against the test data ...
     result = await pkisigner.verify(data=data, signature=signature)

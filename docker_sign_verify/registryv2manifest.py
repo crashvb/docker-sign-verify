@@ -34,29 +34,23 @@ class RegistryV2Manifest(Manifest):
         """
         return manifest.get_media_type() in TYPES
 
-    @staticmethod
-    def new_from(manifest: Manifest) -> "RegistryV2Manifest":
+    def __init__(self, *, manifest: Manifest):
         """
-        Creates an image manifest from a given manifest.
-
         Args:
-            manifest: The manifest from which to create the manifest.
-
-        Returns:
-            The corresponding image manifest list.
+            manifest: The raw image manifest value.
         """
-        # TODO: Follow up, and hopefully remove this method in favor of inlining ...
-        # https://stackoverflow.com/questions/3464061/cast-base-class-to-derived-class-python-or-more-pythonic-way-of-extending-class
-        # https://bugs.python.org/issue35048
-        # manifest.__class__ = RegistryV2Manifest
-        # return manifest
-
-        # https://stackoverflow.com/questions/43057218/python-multiple-inheritance-copy-constructor-class-initialization-and-over
-        return RegistryV2Manifest(
-            manifest=manifest.bytes, media_type=manifest.media_type
+        super().__init__(
+            manifest=manifest.get_bytes(), media_type=manifest.get_media_type()
         )
 
     def get_config_digest(self) -> FormattedSHA256:
+        """
+        Retrieves the image configuration digest value from the image source manifest.
+
+        Returns:
+            The image configuration digest value in the form: <hash type>:<digest value>.
+        """
+
         if self.get_media_type() not in TYPES:
             raise NotImplementedError(
                 f"Unsupported media type: {self.get_media_type()}"
@@ -65,6 +59,13 @@ class RegistryV2Manifest(Manifest):
         return FormattedSHA256.parse(self.get_json()["config"]["digest"])
 
     def get_layers(self) -> List[FormattedSHA256]:
+        """
+        Retrieves the list of manifest layer identifiers.
+
+        Returns:
+            list: Layer identifiers in the form: <hash type>:<digest value>.
+        """
+
         if self.get_media_type() not in TYPES:
             raise NotImplementedError(
                 f"Unsupported media type: {self.get_media_type()}"

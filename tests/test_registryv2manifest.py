@@ -6,7 +6,7 @@
 
 import pytest
 
-from docker_registry_client_async import FormattedSHA256, ImageName, Manifest
+from docker_registry_client_async import FormattedSHA256, Manifest
 
 from docker_sign_verify import RegistryV2Manifest
 
@@ -28,17 +28,15 @@ def manifest(request) -> bytes:
 
 
 @pytest.fixture
-def registry_v2_manifest(manifest) -> RegistryV2Manifest:
+def registry_v2_manifest(manifest: bytes) -> RegistryV2Manifest:
     """Provides a RegistryV2Manifest instance for the sample registry manifest."""
     # Do not use caching; get a new instance for each test
-    return RegistryV2Manifest(manifest)
+    return RegistryV2Manifest(manifest=Manifest(manifest=manifest))
 
 
-def test_new_from(manifest):
+def test_is_type(manifest: bytes):
     """Test casting."""
-    manifest = Manifest(manifest)
-    registry_v2_manifest = RegistryV2Manifest.new_from(manifest)
-    assert len(registry_v2_manifest.get_layers()) == 2
+    assert RegistryV2Manifest.is_type(manifest=Manifest(manifest=manifest))
 
 
 def test___init__(registry_v2_manifest: RegistryV2Manifest):
@@ -46,12 +44,12 @@ def test___init__(registry_v2_manifest: RegistryV2Manifest):
     assert registry_v2_manifest
 
 
-def test___bytes__(registry_v2_manifest: RegistryV2Manifest, manifest):
+def test___bytes__(registry_v2_manifest: RegistryV2Manifest, manifest: bytes):
     """Test __str__ pass-through for different variants."""
     assert bytes(registry_v2_manifest) == manifest
 
 
-def test___str__(registry_v2_manifest: RegistryV2Manifest, manifest):
+def test___str__(registry_v2_manifest: RegistryV2Manifest, manifest: bytes):
     """Test __str__ pass-through for different variants."""
     assert str(registry_v2_manifest) == manifest.decode("utf-8")
 

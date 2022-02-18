@@ -32,30 +32,24 @@ class RegistryV2ManifestList(Manifest):
         """
         return manifest.get_media_type() in TYPES
 
-    @staticmethod
-    def new_from(manifest: Manifest) -> "RegistryV2ManifestList":
+    def __init__(self, *, manifest: Manifest):
         """
-        Creates an image manifest list from a given manifest.
-
         Args:
-            manifest: The manifest from which to create the image manifest list.
-
-        Returns:
-            The corresponding image manifest list.
+            manifest: The raw image manifest value.
         """
-        return RegistryV2ManifestList(
-            manifest.get_bytes(), media_type=manifest.get_media_type()
+        super().__init__(
+            manifest=manifest.get_bytes(), media_type=manifest.get_media_type()
         )
 
     def get_manifests(
-        self, *, architecture: str = None, os: str = None
+        self, *, architecture: str = None, operating_system: str = None
     ) -> List[FormattedSHA256]:
         """
         Retrieves the listing of manifest layer identifiers.
 
         Args:
             architecture: The name of the CPU architecture.
-            os: The name of the operating system.
+            operating_system: The name of the operating system.
 
         Returns:
             list: Manifest identifiers in the form: <hash type>:<digest value>.
@@ -72,7 +66,10 @@ class RegistryV2ManifestList(Manifest):
                 and manifest.get("platform", "").get("architecture", "") != architecture
             ):
                 continue
-            if os and manifest.get("platform", "").get("os", "") != os:
+            if (
+                operating_system
+                and manifest.get("platform", "").get("os", "") != operating_system
+            ):
                 continue
             result.append(FormattedSHA256.parse(manifest["digest"]))
         return result

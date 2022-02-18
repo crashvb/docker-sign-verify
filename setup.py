@@ -64,6 +64,10 @@ setup(
     long_description_content_type="text/markdown",
     name="docker_sign_verify",
     packages=find_packages(),
+    project_urls={
+        "Bug Reports": "https://github.com/crashvb/docker-sign-verify/issues",
+        "Source": "https://github.com/crashvb/docker-sign-verify",
+    },
     tests_require=[
         "docker",
         "docker-compose",

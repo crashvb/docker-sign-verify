@@ -21,10 +21,10 @@ from .signer import Signer
 
 LOGGER = logging.getLogger(__name__)
 PATTERN_BADSIG = re.compile(
-    r"^\[GNUPG:\]\s+BADSIG\s+(?P<key_id>\S+)\s+(?P<username>\S+)", flags=re.MULTILINE
+    r"^\[GNUPG:\]\s+BADSIG\s+(?P<key_id>\S+)\s+(?P<username>.+)", flags=re.MULTILINE
 )
 PATTERN_GOODSIG = re.compile(
-    r"^\[GNUPG:\]\s+GOODSIG\s+(?P<key_id>\S+)\s+(?P<username>\S+)", flags=re.MULTILINE
+    r"^\[GNUPG:\]\s+GOODSIG\s+(?P<key_id>\S+)\s+(?P<username>.+)", flags=re.MULTILINE
 )
 PATTERN_NO_PUBKEY = re.compile(
     r"^\[GNUPG:\]\s+NO_PUBKEY\s+(?P<key_id>\S+)", flags=re.MULTILINE
@@ -35,6 +35,13 @@ PATTERN_VALIDSIG = re.compile(
     r"(?P<expire_timestamp>\S+).+(?P<pubkey_fingerprint>\S+)",
     flags=re.MULTILINE,
 )
+
+
+class GPGExecuteCommand(NamedTuple):
+    # pylint: disable=missing-class-docstring
+    returncode: int
+    stderr: bytes
+    stdout: bytes
 
 
 # Attempt to be compatible with 'pretty-bad-protocol._parsers::Verify', as it is the defacto python standard for GnuPG.
@@ -179,6 +186,27 @@ class GPGSigner(Signer):
             username=username,
         )
 
+    async def _exeute_command(self, *, args, stdin: bytes = None) -> GPGExecuteCommand:
+        """Executes a gpg command and returns the response code, logging as needed."""
+        kwargs = {"stdin": subprocess.PIPE} if stdin is not None else {}
+        process = await asyncio.create_subprocess_exec(
+            *args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            **kwargs,
+        )
+        stdout, stderr = await process.communicate(input=stdin)
+        if process.returncode and self.log_gnupg_errors:
+            LOGGER.debug(
+                "Command Failed:\nArgs: %s\n---stdout---\n%s\n---stderr---\n%s",
+                " ".join(args),
+                stdout.decode("utf-8"),
+                stderr.decode("utf-8"),
+            )
+        return GPGExecuteCommand(
+            returncode=process.returncode, stderr=stderr, stdout=stdout
+        )
+
     # Signer Members
 
     async def sign(self, *, data: bytes) -> str:
@@ -188,7 +216,6 @@ class GPGSigner(Signer):
             raise RuntimeError("Refusing to use an unprotected key!")
 
         # Write the data to a temporary file and invoke GnuPG to create a detached signature ...
-        signaturefile = None
         async with aiotempfile(mode="w+b") as datafile:
             signaturefile = Path(f"{datafile.name}.asc")
 
@@ -196,45 +223,36 @@ class GPGSigner(Signer):
             await datafile.write(data)
             await datafile.flush()
 
+            # TODO: How can we "force" gpg2 to use the provided password, even when gpg-agent has the key loaded?
             args = [
                 "gpg",
-                "--no-options",
-                "--no-emit-version",
-                "--no-tty",
-                "--status-fd",
-                "2",
-                "--homedir",
-                str(self.homedir),
-                "--batch",
-                "--passphrase-fd",
-                "0",
-                "--sign",
                 "--armor",
-                "--detach-sign",
+                "--batch",
                 "--default-key",
                 str(self.keyid),
+                "--detach-sign",
                 "--digest-algo",
                 "SHA512",
+                "--homedir",
+                str(self.homedir),
+                "--no-emit-version",
+                "--no-options",
+                "--no-symkey-cache",
+                "--no-tty",
+                "--passphrase-fd",
+                "0",
                 "--pinentry-mode",
                 "loopback",
+                "--sign",
+                "--status-fd",
+                "2",
                 datafile.name,
             ]
 
-            process = await asyncio.create_subprocess_exec(
-                *args,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+            execute_command = await self._exeute_command(
+                args=args, stdin=self.passphrase.encode("utf-8")
             )
-            stdout, stderr = await process.communicate(self.passphrase.encode("utf-8"))
-            if process.returncode:
-                if self.log_gnupg_errors:
-                    LOGGER.debug(
-                        "Command Failed:\nArgs: %s\n---stdout---\n%s\n---stderr---\n%s",
-                        " ".join(args),
-                        stdout.decode("utf-8"),
-                        stderr.decode("utf-8"),
-                    )
+            if execute_command.returncode:
                 return ""
 
         # Retrieve the detached signature and cleanup ...
@@ -255,32 +273,21 @@ class GPGSigner(Signer):
 
                 args = [
                     "gpg",
-                    "--no-options",
+                    "--batch",
+                    "--homedir",
+                    str(self.homedir),
                     "--no-emit-version",
+                    "--no-options",
                     "--no-tty",
                     "--status-fd",
                     "2",
-                    "--homedir",
-                    str(self.homedir),
-                    "--batch",
                     "--verify",
                     signaturefile.name,
                     datafile.name,
                 ]
 
-                process = await asyncio.create_subprocess_exec(
-                    *args, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-                )
-                stdout, stderr = await process.communicate()
-                if self.log_gnupg_errors and process.returncode:
-                    LOGGER.debug(
-                        "Command Failed:\nArgs: %s\n---stdout---\n%s\n---stderr---\n%s",
-                        " ".join(args),
-                        stdout.decode("utf-8"),
-                        stderr.decode("utf-8"),
-                    )
-
-                status = await GPGSigner._parse_output(output=stderr)
+                execute_command = await self._exeute_command(args=args)
+                status = await GPGSigner._parse_output(output=execute_command.stderr)
 
                 # Assign metadata ...
                 signer_long = signer_short = "Signature parsing failed!"

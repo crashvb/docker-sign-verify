@@ -135,11 +135,7 @@ class PKISigner(Signer):
         private_signer = await self.get_private_signer()
         raw_signature = private_signer.sign(digest)
 
-        return "{0}\n\n{1}\n{2}".format(
-            PKISigner.TAG_START,
-            base64.b64encode(raw_signature).decode(),
-            PKISigner.TAG_END,
-        )
+        return f"{PKISigner.TAG_START}\n\n{base64.b64encode(raw_signature).decode()}\n{PKISigner.TAG_END}"
 
     async def verify(self, *, data: bytes, signature: str) -> PKISignerVerify:
         # if not self.public_key_path:

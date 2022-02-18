@@ -49,7 +49,6 @@ from .conftest import (
 )
 from .stubs import (
     _signer_for_signature,
-    FakeRegistryV2NoLabels,
     FakeSigner,
     FakeSignerVerify,
 )
@@ -64,13 +63,6 @@ pytestmark = [pytest.mark.asyncio, *_pytestmark]
 def credentials_store_path(request) -> Path:
     """Retrieves the path of the credentials store to use for testing."""
     return get_test_data_path(request, "credentials_store.json")
-
-
-@pytest.fixture
-def fake_registry_v2_image_source(request) -> FakeRegistryV2NoLabels:
-    """Provides a fake RegistryV2 without"""
-    # Do not use caching; get a new instance for each test
-    return FakeRegistryV2NoLabels(request, layer_exists=True, dry_run=True)
 
 
 @pytest.fixture()
@@ -165,36 +157,8 @@ async def test___init__(registry_v2_image_source: RegistryV2):
     assert registry_v2_image_source
 
 
-async def test__sign_image_config(
-    fake_registry_v2_image_source: FakeRegistryV2NoLabels,
-    image_name: ImageName,
-):
-    """Test adding signature(s) to the image configuration."""
-    result = await fake_registry_v2_image_source.quick_sign(image_name=image_name)
-    assert result
-
-    image_config = result.image_config
-    assert image_config
-    assert "FAKE SIGNATURE" in str(image_config)
-    assert json.loads(image_config.get_bytes())
-
-    signature_value = result.signature_value
-    assert signature_value
-    assert "FAKE SIGNATURE" in signature_value
-
-    verify_image_data = result.verify_image_data
-    assert verify_image_data
-    assert image_config == verify_image_data.image_config
-
-    manifest = verify_image_data.manifest
-    assert manifest
-    assert manifest.get_config_digest() == image_config.get_digest()
-    assert len(manifest.get_layers()) == len(image_config.get_image_layers())
-
-
 async def test__verify_image_config(
-    fake_registry_v2_image_source: FakeRegistryV2NoLabels,
-    image_name: ImageName,
+    registry_v2_image_source: RegistryV2, known_good_image: TypingKnownGoodImage
 ):
     """Test verifying the integrity of the image configuration."""
 
@@ -220,16 +184,25 @@ async def test__verify_image_config(
     # 1. Pre signature
     # pylint: disable=protected-access
     assertions(
-        await fake_registry_v2_image_source._verify_image_config(image_name=image_name)
+        await registry_v2_image_source._verify_image_config(
+            image_name=known_good_image.image_name
+        )
     )
 
     # Sign
-    await fake_registry_v2_image_source.quick_sign(image_name=image_name)
+    image_name_dest = known_good_image.image_name.clone()
+    image_name_dest.digest = None
+    image_name_dest.tag = test__verify_image_config.__name__
+    await registry_v2_image_source.sign_image(
+        image_name_dest=image_name_dest,
+        image_name_src=known_good_image.image_name,
+        signer=FakeSigner(),
+    )
 
     # 2. Post signature
     # pylint: disable=protected-access
     assertions(
-        await fake_registry_v2_image_source._verify_image_config(image_name=image_name)
+        await registry_v2_image_source._verify_image_config(image_name=image_name_dest)
     )
 
 
@@ -304,7 +277,7 @@ async def test_put_image(
         image_name=image_name, **kwargs
     )
 
-    image_name.tag += __name__
+    image_name.tag += test_put_image.__name__
 
     LOGGER.debug("Storing image: %s ...", image_name)
     await registry_v2_image_source.put_image(
@@ -312,6 +285,7 @@ async def test_put_image(
         image_name=image_name,
         layer_files=response.compressed_layer_files,
         manifest=response.manifest,
+        manifest_list=response.manifest_list,
         **kwargs,
     )
 
@@ -479,37 +453,43 @@ async def test_verify_image_integrity(
 
 
 async def test_verify_image_signatures(
-    fake_registry_v2_image_source: FakeRegistryV2NoLabels,
-    image_name: ImageName,
+    registry_v2_image_source: RegistryV2, known_good_image: TypingKnownGoodImage
 ):
     """Test verifying the signatures within the image configuration."""
     # An exception should be raised if the image configuration is not signed
     with pytest.raises(NoSignatureError) as exception:
-        await fake_registry_v2_image_source.verify_image_signatures(
-            image_name=image_name
+        await registry_v2_image_source.verify_image_signatures(
+            image_name=known_good_image.image_name
         )
     assert str(exception.value) == "Image does not contain any signatures!"
 
     # Sign
-    await fake_registry_v2_image_source.quick_sign(image_name=image_name)
+    image_name_dest = known_good_image.image_name.clone()
+    image_name_dest.digest = None
+    image_name_dest.tag = test_verify_image_signatures.__name__
+    await registry_v2_image_source.sign_image(
+        image_name_dest=image_name_dest,
+        image_name_src=known_good_image.image_name,
+        signer=FakeSigner(),
+    )
 
     # Replace the class method for resolving signature providers ...
     original_method = Signer.for_signature
     Signer.for_signature = _signer_for_signature
 
-    result = await fake_registry_v2_image_source.verify_image_signatures(
-        image_name=image_name
+    result = await registry_v2_image_source.verify_image_signatures(
+        image_name=image_name_dest
     )
     assert result.image_config
     assert result.signatures
 
     # Make sure that signer_kwargs are passed correctly ...
     assignable_value = time()
-    fake_registry_v2_image_source.signer_kwargs = {
+    registry_v2_image_source.signer_kwargs = {
         FakeSigner.__name__: {"assignable_value": assignable_value}
     }
-    result = await fake_registry_v2_image_source.verify_image_signatures(
-        image_name=image_name
+    result = await registry_v2_image_source.verify_image_signatures(
+        image_name=image_name_dest
     )
     assert result.image_config
     assert result.signatures

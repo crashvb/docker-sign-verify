@@ -15,4 +15,3 @@ class SignatureTypes(Enum):
     SIGN = 0  # Append (Co-)signature
     ENDORSE = 1  # Append endorsement
     RESIGN = 2  # Replace signature(s)
-    DETACHED = 3  # Signature decoupled

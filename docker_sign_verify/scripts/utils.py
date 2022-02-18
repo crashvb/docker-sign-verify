@@ -6,6 +6,7 @@ import logging
 import sys
 
 from functools import wraps
+from logging import Formatter
 
 import asyncio
 import click
@@ -13,6 +14,21 @@ import click
 from docker_registry_client_async import ImageName
 
 LOGGING_DEFAULT = 2
+
+
+class CustomFormatter(Formatter):
+    # pylint: disable=too-few-public-methods
+    """Allows for ANSI coloring of logs."""
+    COLORS = {
+        logging.DEBUG: "[38;20m",
+        logging.INFO: "[34;20m",
+        logging.WARNING: "[33;20m",
+        logging.ERROR: "[31;20m",
+        logging.CRITICAL: "[31;1m",
+    }
+
+    def format(self, record):
+        return f"\x1b{CustomFormatter.COLORS[record.levelno]}{super().format(record=record)}\x1b[0m"
 
 
 class HiddenPassword:
@@ -87,6 +103,7 @@ def logging_options(function):
 
 
 def set_log_levels(verbosity: int = LOGGING_DEFAULT):
+    # pylint: disable=protected-access
     """
     Assigns the logging levels in a consistent way.
 
@@ -122,6 +139,11 @@ def set_log_levels(verbosity: int = LOGGING_DEFAULT):
         level=levels[verbosity],
         stream=sys.stdout,
     )
+
+    # No need to loop over handlers or perform None checks as we know from basicConfig() there is only one, and it has
+    # a formatter assigned.
+    handler = logging.getLogger().handlers[0]
+    handler.formatter = CustomFormatter(fmt=handler.formatter._fmt)
 
 
 def to_image_name(context, param, value: str) -> ImageName:

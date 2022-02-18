@@ -127,6 +127,7 @@ async def copy(context: Context, image_name_dest: ImageName, image_name_src: Ima
             # TODO: Select compressed_layer_files vs uncompressed_layer_files based on type(registryv2).
             layer_files=result.compressed_layer_files,
             manifest=result.manifest,
+            manifest_list=result.manifest_list,
         )
         if ctx.registryv2.dry_run:
             LOGGER.info(
@@ -224,6 +225,7 @@ async def sign(
             signature_type=SignatureTypes[signature_type.upper()],
             signer=signer,
         )
+        result.verify_image_data.close()
         if ctx.registryv2.dry_run:
             LOGGER.info(
                 "Dry run completed for image: %s (%s)",

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# pylint: disable=redefined-outer-name,unused-import
+# pylint: disable=redefined-outer-name,too-many-arguments,unused-import
 
 """CLI tests."""
 
