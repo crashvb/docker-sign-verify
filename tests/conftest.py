@@ -171,6 +171,27 @@ def known_good_image(
     )
 
 
+@pytest.fixture(params=get_test_data())
+def known_good_image_proxy(
+    docker_registry_secure: DockerRegistrySecure, request
+) -> TypingKnownGoodImage:
+    """Provides 'known good' metadata for a local image that can be modified."""
+    image_name = ImageName.parse(request.param.image)
+    # Because the squid fixture is also running inside of docker-compose, it will be issued separate network stacks and
+    # trying to resolve the registry (HTTP CONNECT) using 127.0.0.1 as the endpoint address will not work. Instead, use
+    # the docker-compose default network, and the internal service port.
+    image_name.endpoint = docker_registry_secure.endpoint_name
+    manifest_digest = request.param.digests[DockerMediaTypes.DISTRIBUTION_MANIFEST_V2]
+    return TypingKnownGoodImage(
+        digests=request.param.digests,
+        image=str(image_name),
+        image_name=ImageName.parse(
+            f"{str(image_name)}:{request.param.tag}@{manifest_digest}"
+        ),
+        tag=request.param.tag,
+    )
+
+
 @pytest.fixture
 def runner() -> Generator[DSVCliRunner, None, None]:
     """Provides a runner for testing click command line interfaces."""

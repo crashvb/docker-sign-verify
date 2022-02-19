@@ -237,7 +237,6 @@ class GPGSigner(Signer):
                 str(self.homedir),
                 "--no-emit-version",
                 "--no-options",
-                "--no-symkey-cache",
                 "--no-tty",
                 "--passphrase-fd",
                 "0",
@@ -312,5 +311,6 @@ class GPGSigner(Signer):
                     trust=status.trust.value,
                     type="gpg",
                     username=status.username,
-                    valid=(status.status == GPGStatus.VALIDSIG),
+                    valid=(status.status == GPGStatus.VALIDSIG)
+                    and (status.trust in [GPGTrust.FULLY, GPGTrust.ULTIMATE]),
                 )

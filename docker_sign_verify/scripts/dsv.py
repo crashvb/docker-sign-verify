@@ -193,11 +193,11 @@ async def copy(context: Context, image_name_dest: ImageName, image_name_src: Ima
 async def sign(
     context: Context,
     image_name_dest: ImageName,
+    image_name_src: ImageName,
     keyid: str,
     keypass: str,
     signature_type: "sign",
     sigtype: str,
-    image_name_src: ImageName,
 ) -> RegistryV2SignImage:
     """Signs an image."""
 
