@@ -116,7 +116,6 @@ class GPGSigner(Signer):
             gnupghome = os.environ.get("GNUPGHOME")
             if gnupghome:
                 self.homedir = Path(gnupghome)
-                LOGGER.warning("Using GNUPGHOME: %s", self.homedir)
         if not self.homedir:
             self.homedir = Path.home().joinpath(".gnupg")
             LOGGER.warning("Using default GNUPGHOME: %s", self.homedir)
