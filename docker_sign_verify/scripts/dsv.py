@@ -196,7 +196,7 @@ async def sign(
     image_name_src: ImageName,
     keyid: str,
     keypass: str,
-    signature_type: "sign",
+    signature_type: str,
     sigtype: str,
 ) -> RegistryV2SignImage:
     """Signs an image."""
