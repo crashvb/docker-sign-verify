@@ -15,7 +15,7 @@ from typing import List, Tuple, Union
 
 import aiofiles
 
-from docker_registry_client_async import DockerRegistryClientAsync, Indices
+from docker_registry_client_async import Indices
 from docker_registry_client_async.formattedsha256 import FormattedSHA256
 from pytest_docker_registry_fixtures import DockerRegistrySecure
 from OpenSSL import crypto, SSL
@@ -27,7 +27,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 @contextmanager
-def ca_trust_store(path: Path):
+def drca_cacerts(path: Path):
     """Context manager to globally define the DRCA CA trust store."""
     key = "DRCA_CACERTS"
     old = os.environ.get(key, None)
@@ -40,7 +40,36 @@ def ca_trust_store(path: Path):
 
 
 @contextmanager
-def gpg_datastore(path: Path):
+def drca_credentials_store(docker_registry_secure: DockerRegistrySecure):
+    """
+    Context manager to globally define the DRCA credentials store.
+
+    Args:
+        docker_registry_secure: The secure docker registry from which to retrieve the credentials.
+
+    Yields:
+        The path to the DRCA credentials store.
+    """
+    key = "DRCA_CREDENTIALS_STORE"
+    old = os.environ.get(key, None)
+
+    auth = docker_registry_secure.auth_header["Authorization"].split()[1]
+    credentials = {"auths": {docker_registry_secure.endpoint: {"auth": auth}}}
+    tmpfile = NamedTemporaryFile()
+    tmpfile.write(json.dumps(credentials).encode("utf-8"))
+    tmpfile.flush()
+
+    os.environ[key] = str(tmpfile.name)
+    yield None
+    if old is not None:
+        os.environ[key] = old
+    else:
+        del os.environ[key]
+    tmpfile.close()
+
+
+@contextmanager
+def dsv_gpg_datastore(path: Path):
     """Context manager to globally define the DRCA GnuPG datastore."""
     key = "DSV_GPG_DATASTORE"
     old = os.environ.get(key, None)
@@ -103,6 +132,7 @@ def get_test_data_path(request, name) -> Path:
 
 
 def get_test_data(request, klass, name, mode="rb") -> Union[bytes, str]:
+    # pylint: disable=unspecified-encoding
     """Helper method to retrieve test data."""
     key = f"{klass}/{name}"
     result = request.config.cache.get(key, None)
@@ -125,28 +155,3 @@ async def hash_file(path: Path) -> FormattedSHA256:
                 break
             hasher.update(chunk)
     return FormattedSHA256(hasher.hexdigest())
-
-
-@contextmanager
-def registry_credentials(docker_registry_secure: DockerRegistrySecure):
-    """
-    Context manager to globally define the DRCA credentials store.
-
-    Args:
-        docker_registry_secure: The secure docker registry from which to retrieve the credentials.
-
-    Yields:
-        The path to the DRCA credentials store.
-    """
-    old = DockerRegistryClientAsync.DEFAULT_CREDENTIALS_STORE
-
-    auth = docker_registry_secure.auth_header["Authorization"].split()[1]
-    credentials = {"auths": {docker_registry_secure.endpoint: {"auth": auth}}}
-    tmpfile = NamedTemporaryFile()
-    tmpfile.write(json.dumps(credentials).encode("utf-8"))
-    tmpfile.flush()
-
-    DockerRegistryClientAsync.DEFAULT_CREDENTIALS_STORE = tmpfile.name
-    yield DockerRegistryClientAsync.DEFAULT_CREDENTIALS_STORE
-    DockerRegistryClientAsync.DEFAULT_CREDENTIALS_STORE = old
-    tmpfile.close()

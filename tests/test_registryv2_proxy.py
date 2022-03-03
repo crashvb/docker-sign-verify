@@ -50,9 +50,9 @@ from .stubs import (
     FakeSignerVerify,
 )
 from .test_registryv2 import (
-    credentials_store_path,
-    image_name,
-    replicate_manifest_lists,
+    credentials_store_path,  # Needed for pytest
+    image_name,  # Needed for pytest
+    replicate_manifest_lists,  # Needed for pytest
 )
 
 pytestmark = [pytest.mark.asyncio, *_pytestmark]

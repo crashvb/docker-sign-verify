@@ -20,10 +20,10 @@ from docker_sign_verify.scripts.dsv import cli
 from .conftest import _pytestmark, TypingKnownGoodImage
 from .test_gpgsigner import gpgsigner  # Needed for pytest
 from .testutils import (
-    ca_trust_store,
-    gpg_datastore,
+    drca_cacerts,
+    dsv_gpg_datastore,
     hybrid_trust_store,
-    registry_credentials,
+    drca_credentials_store,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -57,7 +57,7 @@ def test_copy_invalid_keyid(
     destination.digest = None
     destination.tag += __name__
 
-    with ca_trust_store(docker_registry_secure.cacerts), registry_credentials(
+    with drca_cacerts(docker_registry_secure.cacerts), drca_credentials_store(
         docker_registry_secure
     ):
         result = clirunner.invoke(
@@ -105,7 +105,7 @@ def test_copy_no_signatures_check_signatures(
     destination.digest = None
     destination.tag += __name__
 
-    with ca_trust_store(docker_registry_secure.cacerts), registry_credentials(
+    with drca_cacerts(docker_registry_secure.cacerts), drca_credentials_store(
         docker_registry_secure
     ):
         result = runner.invoke(
@@ -133,7 +133,7 @@ def test_copy_no_signatures_no_check_signatures(
     destination.digest = None
     destination.tag += __name__
 
-    with ca_trust_store(docker_registry_secure.cacerts), registry_credentials(
+    with drca_cacerts(docker_registry_secure.cacerts), drca_credentials_store(
         docker_registry_secure
     ):
         result = runner.invoke(
@@ -186,7 +186,7 @@ def test_copy_signed(
     destination.digest = None
     destination.tag += __name__
 
-    with ca_trust_store(docker_registry_secure.cacerts), registry_credentials(
+    with drca_cacerts(docker_registry_secure.cacerts), drca_credentials_store(
         docker_registry_secure
     ):
         result = clirunner.invoke(
@@ -211,7 +211,7 @@ def test_copy_signed(
         copy = destination.clone()
         copy.tag += f"{__name__}_copy"
 
-        with gpg_datastore(gpgsigner.homedir):
+        with dsv_gpg_datastore(gpgsigner.homedir):
             result = runner.invoke(cli, args=["copy", str(destination), str(copy)])
             assert not result.exception
             assert "Integrity check passed." in caplog.text
@@ -237,7 +237,7 @@ def test_copy_unauthorized(
     destination.digest = None
     destination.tag += __name__
 
-    with ca_trust_store(docker_registry_secure.cacerts):
+    with drca_cacerts(docker_registry_secure.cacerts):
         result = runner.invoke(cli, args=["copy", str(source), str(destination)])
         assert isinstance(result.exception, SystemExit)
         assert "401" in caplog.text
@@ -256,7 +256,7 @@ def test_copy_unauthorized_dockerhub(
 
     source = f"{Indices.DOCKERHUB}/dummy:dummy"
     destination = f"{Indices.DOCKERHUB}/dummy:dummy_copy"
-    with hybrid_trust_store(docker_registry_secure) as path, ca_trust_store(path):
+    with hybrid_trust_store(docker_registry_secure) as path, drca_cacerts(path):
         result = runner.invoke(cli, args=["copy", source, destination])
         assert isinstance(result.exception, SystemExit)
         assert "401" in caplog.text
@@ -281,7 +281,7 @@ def test_sign_bad_keyid(
     destination.digest = None
     destination.tag += __name__
 
-    with ca_trust_store(docker_registry_secure.cacerts), registry_credentials(
+    with drca_cacerts(docker_registry_secure.cacerts), drca_credentials_store(
         docker_registry_secure
     ):
         result = clirunner.invoke(
@@ -318,7 +318,7 @@ def test_sign_forced_digest_value(
     destination = source.clone()
     destination.tag += __name__
 
-    with ca_trust_store(docker_registry_secure.cacerts), registry_credentials(
+    with drca_cacerts(docker_registry_secure.cacerts), drca_credentials_store(
         docker_registry_secure
     ):
         result = clirunner.invoke(
@@ -362,7 +362,7 @@ def test_sign_no_signatures_endorse(
     destination.digest = None
     destination.tag += __name__
 
-    with ca_trust_store(docker_registry_secure.cacerts), registry_credentials(
+    with drca_cacerts(docker_registry_secure.cacerts), drca_credentials_store(
         docker_registry_secure
     ):
         result = clirunner.invoke(
@@ -403,7 +403,7 @@ def test_sign_no_signatures_sign(
     destination.digest = None
     destination.tag += __name__
 
-    with ca_trust_store(docker_registry_secure.cacerts), registry_credentials(
+    with drca_cacerts(docker_registry_secure.cacerts), drca_credentials_store(
         docker_registry_secure
     ):
         result = clirunner.invoke(
@@ -444,7 +444,7 @@ def test_sign_no_signatures_sign_implicit(
     destination.digest = None
     destination.tag += __name__
 
-    with ca_trust_store(docker_registry_secure.cacerts), registry_credentials(
+    with drca_cacerts(docker_registry_secure.cacerts), drca_credentials_store(
         docker_registry_secure
     ):
         result = clirunner.invoke(
@@ -483,7 +483,7 @@ def test_sign_no_signatures_resign(
     destination.digest = None
     destination.tag += __name__
 
-    with ca_trust_store(docker_registry_secure.cacerts), registry_credentials(
+    with drca_cacerts(docker_registry_secure.cacerts), drca_credentials_store(
         docker_registry_secure
     ):
         result = clirunner.invoke(
@@ -521,9 +521,9 @@ def test_sign_unauthorized_destination(
     caplog.set_level(logging.DEBUG)
 
     # Using local registry credentials when connecting to dockerhub ...
-    with hybrid_trust_store(docker_registry_secure) as path, ca_trust_store(
+    with hybrid_trust_store(docker_registry_secure) as path, drca_cacerts(
         path
-    ), registry_credentials(docker_registry_secure):
+    ), drca_credentials_store(docker_registry_secure):
         result = clirunner.invoke(
             cli,
             args=[
@@ -556,7 +556,7 @@ def test_sign_unauthorized_source(
     caplog.set_level(logging.DEBUG)
 
     # Using local registry credentials when connecting to dockehub ...
-    with registry_credentials(docker_registry_secure):
+    with drca_credentials_store(docker_registry_secure):
         result = clirunner.invoke(
             cli,
             args=[
@@ -593,7 +593,7 @@ def test_verify_invalid_keyid(
     destination.digest = None
     destination.tag += __name__
 
-    with ca_trust_store(docker_registry_secure.cacerts), registry_credentials(
+    with drca_cacerts(docker_registry_secure.cacerts), drca_credentials_store(
         docker_registry_secure
     ):
         result = clirunner.invoke(
@@ -615,7 +615,7 @@ def test_verify_invalid_keyid(
 
         caplog.clear()
 
-        with gpg_datastore(Path("/dev/null")):
+        with dsv_gpg_datastore(Path("/dev/null")):
             result = runner.invoke(cli, args=["verify", str(destination)])
             assert result.exception
             assert "Integrity check passed." in caplog.text
@@ -635,7 +635,7 @@ def test_verify_no_signatures_check_signatures(
     caplog.set_level(logging.DEBUG)
 
     image = str(known_good_image.image_name)
-    with ca_trust_store(docker_registry_secure.cacerts), registry_credentials(
+    with drca_cacerts(docker_registry_secure.cacerts), drca_credentials_store(
         docker_registry_secure
     ):
         result = runner.invoke(cli, args=["--check-signatures", "verify", image])
@@ -657,7 +657,7 @@ def test_verify_no_signatures_no_check_signatures(
     caplog.set_level(logging.DEBUG)
 
     image = str(known_good_image.image_name)
-    with ca_trust_store(docker_registry_secure.cacerts), registry_credentials(
+    with drca_cacerts(docker_registry_secure.cacerts), drca_credentials_store(
         docker_registry_secure
     ):
         result = runner.invoke(cli, args=["--no-check-signatures", "verify", image])
@@ -682,7 +682,7 @@ def test_verify_not_found(
     image.digest = None
     image.tag += "_does_not_exist"
     image = str(image)
-    with ca_trust_store(docker_registry_secure.cacerts), registry_credentials(
+    with drca_cacerts(docker_registry_secure.cacerts), drca_credentials_store(
         docker_registry_secure
     ):
         result = runner.invoke(cli, args=["verify", image])
@@ -710,7 +710,7 @@ def test_verify_signed(
     destination.digest = None
     destination.tag += "_signed"
 
-    with ca_trust_store(docker_registry_secure.cacerts), registry_credentials(
+    with drca_cacerts(docker_registry_secure.cacerts), drca_credentials_store(
         docker_registry_secure
     ):
         result = clirunner.invoke(
@@ -732,7 +732,7 @@ def test_verify_signed(
 
         caplog.clear()
 
-        with gpg_datastore(gpgsigner.homedir):
+        with dsv_gpg_datastore(gpgsigner.homedir):
             result = runner.invoke(cli, args=["verify", str(destination)])
             assert not result.exception
             assert "Integrity check passed." in caplog.text
@@ -753,7 +753,7 @@ def test_verify_unauthorized(
     caplog.set_level(logging.DEBUG)
 
     image = str(known_good_image.image_name)
-    with ca_trust_store(docker_registry_secure.cacerts):
+    with drca_cacerts(docker_registry_secure.cacerts):
         result = runner.invoke(cli, args=["verify", image])
         assert isinstance(result.exception, SystemExit)
         assert "401" in caplog.text
@@ -771,7 +771,7 @@ def test_verify_unauthorized_dockerhub(
     caplog.set_level(logging.DEBUG)
 
     image = f"{Indices.DOCKERHUB}/dummy:dummy"
-    with hybrid_trust_store(docker_registry_secure) as path, ca_trust_store(path):
+    with hybrid_trust_store(docker_registry_secure) as path, drca_cacerts(path):
         result = runner.invoke(cli, args=["verify", image])
         assert isinstance(result.exception, SystemExit)
         assert "401" in caplog.text

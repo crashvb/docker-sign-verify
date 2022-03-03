@@ -80,6 +80,7 @@ class PKISigner(Signer):
             file.flush()
 
     async def get_keypair(self) -> List:
+        # pylint: disable=unspecified-encoding
         """
         Retrieves the keypair entries from disk.
 
