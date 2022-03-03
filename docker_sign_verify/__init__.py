@@ -12,4 +12,4 @@ from .registryv2manifestlist import *
 from .signer import *
 from .specs import *
 
-__version__ = "2.0.3.dev0"
+__version__ = "2.0.3"
