@@ -157,6 +157,7 @@ async def test___init__(registry_v2_image_source: RegistryV2):
     assert registry_v2_image_source
 
 
+@pytest.mark.online
 async def test__verify_image_config(
     registry_v2_image_source: RegistryV2, known_good_image: TypingKnownGoodImage
 ):
