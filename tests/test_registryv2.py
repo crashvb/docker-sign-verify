@@ -191,9 +191,11 @@ async def test__verify_image_config(
     )
 
     # Sign
-    image_name_dest = known_good_image.image_name.clone()
-    image_name_dest.digest = None
-    image_name_dest.tag = test__verify_image_config.__name__
+    image_name_dest = (
+        known_good_image.image_name.clone()
+        .set_digest()
+        .set_tag(test__verify_image_config.__name__)
+    )
     await registry_v2_image_source.sign_image(
         image_name_dest=image_name_dest,
         image_name_src=known_good_image.image_name,
@@ -355,9 +357,8 @@ async def test_sign_image_same_image_source(
     registry_v2_image_source: RegistryV2, known_good_image: TypingKnownGoodImage
 ):
     """Test image signing."""
-    dest_image_name = known_good_image.image_name.clone()
-    dest_image_name.digest = None
-    dest_image_name.tag = f"{dest_image_name.tag}_signed"
+    dest_image_name = known_good_image.image_name.clone().set_digest()
+    dest_image_name.tag += "_signed"
 
     def assertions(result: RegistryV2SignImage):
         assert result
@@ -448,9 +449,11 @@ async def test_verify_image_signatures(
     assert str(exception.value) == "Image does not contain any signatures!"
 
     # Sign
-    image_name_dest = known_good_image.image_name.clone()
-    image_name_dest.digest = None
-    image_name_dest.tag = test_verify_image_signatures.__name__
+    image_name_dest = (
+        known_good_image.image_name.clone()
+        .set_digest()
+        .set_tag(test_verify_image_signatures.__name__)
+    )
     await registry_v2_image_source.sign_image(
         image_name_dest=image_name_dest,
         image_name_src=known_good_image.image_name,

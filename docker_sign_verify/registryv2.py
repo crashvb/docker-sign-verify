@@ -174,9 +174,7 @@ class RegistryV2:
             architecture=self.architecture, operating_system=self.operating_system
         )
         for digest in digests:
-            img_name = image_name.clone()
-            img_name.digest = digest
-            img_name.tag = None
+            img_name = image_name.clone().set_digest(digest).set_tag()
             result.append(await self.get_manifest(image_name=img_name))
         if check:
             if not result:

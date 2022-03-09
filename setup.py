@@ -55,7 +55,7 @@ setup(
         "aiohttp",
         "aiotempfile",
         "canonicaljson",
-        "docker-registry-client-async>=0.2.0",
+        "docker-registry-client-async>=0.2.3",
         "click",
         "pycryptodome",
     ],

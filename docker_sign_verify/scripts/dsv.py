@@ -91,7 +91,7 @@ async def _verify(
 def cli(
     context: Context,
     check_signatures: bool,
-    dry_run: False,
+    dry_run: bool,
     verbosity: int = LOGGING_DEFAULT,
 ):
     """Utility for signing and verifying docker images."""
