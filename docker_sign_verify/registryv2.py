@@ -306,7 +306,7 @@ class RegistryV2:
         image_name: ImageName,
         layer_files: List,
         manifest: RegistryV2Manifest,
-        manifest_list: RegistryV2ManifestList,
+        manifest_list: RegistryV2ManifestList = None,
         **kwargs,
     ):
         """
