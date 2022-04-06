@@ -100,7 +100,7 @@ async def registry_v2_image_source_proxy(
             docker_registry_secure.endpoint_name,
         ]:
             await registry_v2_image_source_proxy.docker_registry_client_async.add_credentials(
-                name, credentials
+                credentials=credentials, endpoint=name
             )
         registry_v2_image_source_proxy.docker_registry_client_async.proxies[
             "https"
