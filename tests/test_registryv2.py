@@ -95,7 +95,7 @@ async def registry_v2_image_source(
     ) as registry_v2_image_source:
         credentials = docker_registry_secure.auth_header["Authorization"].split()[1]
         await registry_v2_image_source.docker_registry_client_async.add_credentials(
-            docker_registry_secure.endpoint, credentials
+            credentials=credentials, endpoint=docker_registry_secure.endpoint
         )
 
         yield registry_v2_image_source
@@ -121,7 +121,7 @@ async def replicate_manifest_lists(docker_registry_secure: DockerRegistrySecure)
                 image_name.image
             )
             auth_header_src = await docker_registry_client_async._get_request_headers(
-                image_name, scope=scope
+                image_name=image_name, scope=scope
             )
             if not auth_header_src:
                 LOGGER.warning(

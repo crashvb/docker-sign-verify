@@ -2,7 +2,7 @@
 
 -include makefile.config
 
-.PHONY: black build clean default deploy deploy-test purge release sign test test-all test-all-verbose test-code test-package test-verbose venv .venv verify
+.PHONY: black build clean default deploy deploy-test purge release sign test test-all test-all-verbose test-code test-coverage test-coverage-all test-coverage-all-verbose test-package test-verbose venv .venv verify
 
 tmpdir:=$(shell mktemp --directory)
 
@@ -57,6 +57,16 @@ test-all-verbose:
 test-code:
 	# Note: https://github.com/PyCQA/pylint/issues/289
 	python -m pylint --disable C0330,R0801 --max-line-length=120 docker_sign_verify tests
+
+test-coverage:
+	coverage run --source=docker_sign_verify -m pytest --log-cli-level=info $(args)
+
+test-coverage-all:
+	coverage run --source=docker_sign_verify -m pytest --log-cli-level=info --allow-online-modification $(args)
+
+test-coverage-all-verbose:
+	coverage run --source=docker_sign_verify -m pytest --log-cli-level=debug --allow-online-modification $(args)
+	coverage report
 
 test-package: build
 	python -m venv $(tmpdir)

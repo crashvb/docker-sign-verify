@@ -1,3 +1,6 @@
+after_success:
+- coveralls
+dist: focal
 before_install:
 - sudo mv /usr/bin/gpg /usr/bin/gpg1
 - sudo update-alternatives --verbose --install /usr/bin/gpg gnupg /usr/bin/gpg2 50
@@ -10,7 +13,9 @@ install:
 - python -m pip install --editable .[dev]
 language: python
 python:
-- "3.8.3"
+- "3.8"
+- "3.9"
+- "3.10"
 script:
 # TODO: Figure out anonymous bind credentials for dockerhub API and change to "args=--allow-online make test"
-- make test
+- make test-coverage

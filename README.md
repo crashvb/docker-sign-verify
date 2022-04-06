@@ -1,5 +1,13 @@
 # docker-sign-verify
 
+[![pypi version](https://img.shields.io/pypi/v/docker-sign-verify.svg)](https://pypi.org/project/docker-sign-verify)
+[![build status](https://img.shields.io/travis/crashvb/docker-sign-verify.svg)](https://app.travis-ci.com/github/crashvb/docker-sign-verify)
+[![coverage status](https://coveralls.io/repos/github/crashvb/docker-sign-verify/badge.svg)](https://coveralls.io/github/crashvb/docker-sign-verify)
+[![python versions](https://img.shields.io/pypi/pyversions/docker-sign-verify.svg)](https://pypi.org/project/docker-sign-verify)
+[![linting](https://img.shields.io/badge/linting-pylint-yellowgreen)](https://github.com/PyCQA/pylint)
+[![code style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![license](https://img.shields.io/github/license/crashvb/docker-sign-verify.svg)](https://github.com/crashvb/docker-sign-verify/blob/master/LICENSE.md)
+
 ## Overview
 
 A utility that can be used to create and verify embedded signatures in docker images, and verify the integrity of image metadata and layers.
@@ -11,10 +19,6 @@ The goal of this utility is to operate directly on Docker Registries (v2).
 * Verifies and signs files in place; no need to replicate images using docker-cli.
 * Extensible signing technologies; built-in support for GnuPG and PKI.
 * Integrates with the docker credentials store.
-
-## Compatibility
-
-* Tested with python 3.8
 
 ## Installation
 ### From [pypi.org](https://pypi.org/project/docker-sign-verify/)

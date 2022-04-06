@@ -25,6 +25,9 @@ setup(
         "Intended Audience :: Developers",
         "License :: OSI Approved :: Apache Software License",
         "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
         "Operating System :: OS Independent",
     ],
     description="A utility that can be used to sign and verify docker images.",
@@ -35,6 +38,7 @@ setup(
     extras_require={
         "dev": [
             "black",
+            "coveralls",
             "docker",
             "docker-compose",
             "lovely-pytest-docker",
