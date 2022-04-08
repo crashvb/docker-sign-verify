@@ -80,7 +80,6 @@ setup(
         "lovely-pytest-docker",
         "pytest",
         "pytest-asyncio",
-        "pytest-cov",
         "pytest-docker-registry-fixtures",
         "pytest-docker-squid-fixtures",
         "pytest-gnupg-fixtures",
