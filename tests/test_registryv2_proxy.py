@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# pylint: disable=protected-access,redefined-outer-name
+# pylint: disable=protected-access,redefined-outer-name,unused-import
 
 """RegistryV2 tests."""
 

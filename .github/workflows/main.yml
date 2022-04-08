@@ -1,0 +1,54 @@
+---
+name: tests
+on: [push, pull_request]
+jobs:
+  tests:
+    defaults:
+      run:
+        shell: 'script --command "bash {0}" --quiet --return'
+    if: github.repository == 'crashvb/docker-sign-verify'
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions/setup-python@v3
+      with:
+        python-version: "${{matrix.python-version}}"
+    - name: setup virtual enviroment
+      run: make venv
+    - name: pytest
+      # continue-on-error: true
+      run: |
+        source .venv/bin/activate
+        make test
+        coveralls --service=github
+      env:
+        COVERALLS_FLAG_NAME: "${{matrix.python-version}}"
+        COVERALLS_PARALLEL: true
+        DSV_GPG_LOG_ERRORS: true
+        GITHUB_TOKEN: "${{secrets.GITHUB_TOKEN}}"
+        TRAVIS: true
+    - name: pylint
+      # continue-on-error: true
+      run: |
+        source .venv/bin/activate
+        make test-code
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.9", "3.10"]
+  coveralls:
+    defaults:
+      run:
+        shell: 'script --command "bash {0}" --quiet --return'
+    if: github.repository == 'crashvb/docker-sign-verify'
+    needs: tests
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/setup-python@v3
+      with:
+        python-version: "3.8"
+    - name: finalize coveralls
+      run: |
+        python -m pip install --upgrade coveralls
+        coveralls --finish --service=github
+      env:
+        GITHUB_TOKEN: "${{secrets.GITHUB_TOKEN}}"

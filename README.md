@@ -1,9 +1,9 @@
 # docker-sign-verify
 
 [![pypi version](https://img.shields.io/pypi/v/docker-sign-verify.svg)](https://pypi.org/project/docker-sign-verify)
-[![build status](https://img.shields.io/travis/crashvb/docker-sign-verify.svg)](https://app.travis-ci.com/github/crashvb/docker-sign-verify)
+[![build status](https://github.com/crashvb/docker-sign-verify/actions/workflows/main.yml/badge.svg)](https://github.com/crashvb/docker-sign-verify/actions)
 [![coverage status](https://coveralls.io/repos/github/crashvb/docker-sign-verify/badge.svg)](https://coveralls.io/github/crashvb/docker-sign-verify)
-[![python versions](https://img.shields.io/pypi/pyversions/docker-sign-verify.svg)](https://pypi.org/project/docker-sign-verify)
+[![python versions](https://img.shields.io/pypi/pyversions/docker-sign-verify.svg?logo=python&logoColor=FBE072)](https://pypi.org/project/docker-sign-verify)
 [![linting](https://img.shields.io/badge/linting-pylint-yellowgreen)](https://github.com/PyCQA/pylint)
 [![code style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![license](https://img.shields.io/github/license/crashvb/docker-sign-verify.svg)](https://github.com/crashvb/docker-sign-verify/blob/master/LICENSE.md)
