@@ -199,15 +199,15 @@ d9e31c5898fe
 
 | Variable | Default Value | Description |
 | ---------| ------------- | ----------- |
-| DSV_CREDENTIALS_STORE | ~/.docker/config.json | The docker credentials store. |
-| DSV_DEFAULT_REGISTRY | index.docker.io | The dockerhub registry API endpoint. |
-| DSV_DOCKERHUB_AUTH | auth.docker.io | The dockerhub authentication endpoint. |
-| DSV_GPG_DATASTORE | ~/.gnupg | The GnuPG home directory. |
-| DSV_GPG_LOG_ERRORS | | If defined, errors from gnupg will be logged. |
-| DSV_KEYID | _None_ | Identifier of the signing key. For GnuPG this is the keyid. For PKI this is the path to PEM encoded private key. |
-| DSV_KEYPASS | "" | The corresponding key passphrase. |
-| DSV_KEYTYPE | GPG | The signature type. Either GPG or PKI.
-| DSV_PKI_DATASTORE | ~/.dsv.pem | The PKI key store and trust store (concatenated PEM entities). |
+| DSV\_CREDENTIALS\_STORE | ~/.docker/config.json | The docker credentials store. |
+| DSV\_DEFAULT\_REGISTRY | index.docker.io | The dockerhub registry API endpoint. |
+| DSV\_DOCKERHUB\_AUTH | auth.docker.io | The dockerhub authentication endpoint. |
+| DSV\_GPG\_DATASTORE | ~/.gnupg | The GnuPG home directory. |
+| DSV\_GPG\_LOG\_ERRORS | | If defined, errors from gnupg will be logged. |
+| DSV\_KEYID | _undefined_ | Identifier of the signing key. For GnuPG this is the keyid. For PKI this is the path to PEM encoded private key. |
+| DSV\_KEYPASS | "" | The corresponding key passphrase. |
+| DSV\_KEYTYPE | GPG | The signature type. Either GPG or PKI.
+| DSV\_PKI\_DATASTORE | ~/.dsv.pem | The PKI key store and trust store (concatenated PEM entities). |
 
 
 ## Development
