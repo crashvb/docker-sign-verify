@@ -604,8 +604,7 @@ class RegistryV2:
                     # TODO: Add support for zstd compression ...
                     else:
                         raise RuntimeError(
-                            "Unsupported compression for media type: %s",
-                            layer_media_type,
+                            f"Unsupported compression for media type: {layer_media_type}"
                         )
                 must_be_equal(
                     actual=data_layer_file1.digest

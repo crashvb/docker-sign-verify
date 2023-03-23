@@ -493,5 +493,7 @@ async def test_issue_30():
     )
     # Note: Using default credentials store from the test environment
     async with RegistryV2() as registry_v2_image_source:
-        response = await registry_v2_image_source.verify_image_integrity(image_name=image_name)
+        response = await registry_v2_image_source.verify_image_integrity(
+            image_name=image_name
+        )
         assert response
