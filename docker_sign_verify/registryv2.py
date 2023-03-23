@@ -31,23 +31,37 @@ from .imageconfig import ImageConfig, SignatureTypes
 from .registryv2manifest import RegistryV2Manifest
 from .registryv2manifestlist import RegistryV2ManifestList
 from .signer import Signer
-from .utils import gunzip, xellipsis
+from .utils import is_layer_compressed, gunzip, xellipsis
 
 LOGGER = logging.getLogger(__name__)
 
 
-class RegistryV2VerifyImageIntegrity(NamedTuple):
+class RegistryV2LayerFiles(NamedTuple):
     # pylint: disable=missing-class-docstring
-    compressed_layer_files: Optional[List[AiofilesContextManager]]
-    image_config: ImageConfig
-    manifest: RegistryV2Manifest
-    manifest_list: Optional[RegistryV2ManifestList]
-    uncompressed_layer_files: List[AiofilesContextManager]
+    layer_digest: FormattedSHA256
+    layer_file_compressed: Optional[AiofilesContextManager]
+    layer_file_uncompressed: AiofilesContextManager
+    layer_media_type: AiofilesContextManager
 
     def close(self):
         """Cleanup temporary files."""
-        for file in self.compressed_layer_files + self.uncompressed_layer_files:
-            file.close()
+        if self.layer_file_compressed:
+            self.layer_file_compressed.close()
+        if self.layer_file_uncompressed:
+            self.layer_file_uncompressed.close()
+
+
+class RegistryV2VerifyImageIntegrity(NamedTuple):
+    # pylint: disable=missing-class-docstring
+    image_config: ImageConfig
+    layer_files: List[RegistryV2LayerFiles]
+    manifest: RegistryV2Manifest
+    manifest_list: Optional[RegistryV2ManifestList]
+
+    def close(self):
+        """Cleanup temporary files."""
+        for layer_file in self.layer_files:
+            layer_file.close()
 
 
 class RegistryV2SignImageConfig(NamedTuple):
@@ -76,17 +90,16 @@ class RegistryV2SignImage(NamedTuple):
 
 class RegistryV2VerifyImageSignatures(NamedTuple):
     # pylint: disable=missing-class-docstring
-    compressed_layer_files: Optional[List[AiofilesContextManager]]
     image_config: ImageConfig
+    layer_files: List[RegistryV2LayerFiles]
     manifest: RegistryV2Manifest
     manifest_list: Optional[RegistryV2ManifestList]
     signatures: Any
-    uncompressed_layer_files: List[AiofilesContextManager]
 
     def close(self):
         """Cleanup temporary files."""
-        for file in self.compressed_layer_files + self.uncompressed_layer_files:
-            file.close()
+        for layer_file in self.layer_files:
+            layer_file.close()
 
 
 def check_dry_run(func):
@@ -304,7 +317,7 @@ class RegistryV2:
         *,
         image_config: ImageConfig,
         image_name: ImageName,
-        layer_files: List,
+        layer_files: List[RegistryV2LayerFiles],
         manifest: RegistryV2Manifest,
         manifest_list: RegistryV2ManifestList = None,
         **kwargs,
@@ -326,11 +339,14 @@ class RegistryV2:
 
         # Replicate all of the image layers ...
         LOGGER.debug("    Replicating image layers ...")
-        manifest_layers = manifest.get_layers()
-        for i, manifest_layer in enumerate(manifest_layers):
+        for i, layer in enumerate(manifest.get_json()["layers"]):
+            layer_digest = FormattedSHA256.parse(layer["digest"])
+            compressed = is_layer_compressed(media_type=layer["mediaType"])
             await self.put_image_layer_from_disk(
-                digest_expected=manifest_layer,
-                file=layer_files[i],
+                digest_expected=layer_digest,
+                file=layer_files[i].layer_file_compressed
+                if compressed
+                else layer_files[i].layer_file_uncompressed,
                 image_name=image_name,
                 **kwargs,
             )
@@ -499,7 +515,7 @@ class RegistryV2:
         await self.put_image(
             image_config=image_config,
             image_name=image_name_dest,
-            layer_files=data.compressed_layer_files,
+            layer_files=data.layer_files,
             manifest=manifest,
             manifest_list=data.manifest_list,
             **kwargs,
@@ -529,11 +545,10 @@ class RegistryV2:
 
         Returns:
             NamedTuple:
-                compressed_layer_files: The list of compressed layer files on disk (optional).
                 image config: The image configuration.
+                layer_files: The list of layer files on disk.
                 manifest: The image source-specific manifest file.
                 manifest_list: The image-source specific manifest list.
-                uncompressed_layer_files: The list of uncompressed layer files on disk.
         """
         data = await self._verify_image_config(image_name=image_name, **kwargs)
 
@@ -548,59 +563,84 @@ class RegistryV2:
             raise DigestMismatchError("Manifest not contained within manifest list!")
 
         # Reconcile manifest layers and image layers (in order)...
-        compressed_layer_files = []
-        uncompressed_layer_files = []
+        layer_files = []
+        layer_file0 = None  # Verify against registry manifest
+        layer_file1 = None  # Verify against image config
         try:
-            for i, layer in enumerate(data.manifest_layers):
+            for i, layer in enumerate(data.manifest.get_json()["layers"]):
+                layer_digest = FormattedSHA256.parse(layer["digest"])
+                layer_media_type = layer["mediaType"]
+
                 # Retrieve the registry image layer and verify the digest ...
-                compressed_layer_files.append(
-                    await aiotempfile(prefix="tmp-compressed")
-                )
-                data_compressed = (
+                layer_file0 = await aiotempfile(prefix="tmp-file0")
+                data_layer_file0 = (
                     await self.docker_registry_client_async.get_blob_to_disk(
-                        digest=layer,
-                        file=compressed_layer_files[i],
+                        digest=layer_digest,
+                        file=layer_file0,
                         image_name=image_name,
                         **kwargs,
                     )
                 )
                 must_be_equal(
-                    actual=data_compressed.digest,
-                    expected=layer,
+                    actual=data_layer_file0.digest,
+                    expected=layer_digest,
                     msg=f"Registry layer[{i}] digest mismatch",
                 )
                 must_be_equal(
-                    actual=data_compressed.size,
-                    expected=os.path.getsize(compressed_layer_files[i].name),
+                    actual=data_layer_file0.size,
+                    expected=os.path.getsize(layer_file0.name),
                     msg=f"Registry layer[{i}] size mismatch",
                 )
 
-                # Decompress (convert) the registry image layer into the image layer
-                # and verify the digest ...
-                uncompressed_layer_files.append(
-                    await aiotempfile(prefix="tmp-uncompressed")
-                )
-                data_uncompressed = await gunzip(
-                    compressed_layer_files[i].name, uncompressed_layer_files[i]
-                )
+                # If the layer is compressed, decompress (convert) the registry image layer into the image layer and
+                # verify the digest ...
+                compressed = is_layer_compressed(media_type=layer_media_type)
+                data_layer_file1 = None
+                if compressed:
+                    layer_file1 = await aiotempfile(prefix="tmp-file1")
+                    if layer_media_type.lower().endswith("gzip"):
+                        data_layer_file1 = await gunzip(layer_file0.name, layer_file1)
+
+                    # TODO: Add support for zstd compression ...
+                    else:
+                        raise RuntimeError(
+                            "Unsupported compression for media type: %s",
+                            layer_media_type,
+                        )
                 must_be_equal(
-                    actual=data_uncompressed.digest,
+                    actual=data_layer_file1.digest
+                    if compressed
+                    else data_layer_file0.digest,
                     expected=data.image_layers[i],
                     msg=f"Image layer[{i}] digest mismatch",
                 )
+
+                layer_files.append(
+                    RegistryV2LayerFiles(
+                        layer_digest=layer_digest,
+                        layer_file_compressed=layer_file0 if compressed else None,
+                        layer_file_uncompressed=layer_file1
+                        if compressed
+                        else layer_file0,
+                        layer_media_type=layer_media_type,
+                    )
+                )
         except Exception:
-            for file in compressed_layer_files + uncompressed_layer_files:
-                file.close()
+            for layer_file in layer_files:
+                layer_file.close()
+            if layer_file0:
+                layer_file0.close()
+            if layer_file1:
+                layer_file1.close()
             raise
 
         LOGGER.debug("Integrity check passed.")
 
         return RegistryV2VerifyImageIntegrity(
-            compressed_layer_files=compressed_layer_files,
             image_config=data.image_config,
+            layer_files=layer_files,
             manifest=data.manifest,
             manifest_list=data.manifest_list,
-            uncompressed_layer_files=uncompressed_layer_files,
         )
 
     async def verify_image_signatures(
@@ -615,12 +655,11 @@ class RegistryV2:
 
         Returns:
             NamedTuple:
-                compressed_layer_files: The list of compressed layer files on disk (optional).
                 image config: The image configuration.
+                layer_files: The list of layer files on disk.
                 manifest: The image source-specific manifest file.
                 manifest_list: The image-source specific manifest list.
                 signatures: as defined by :func:~docker_sign_verify.ImageConfig.verify_signatures.
-                uncompressed_layer_files: The list of uncompressed layer files on disk.
         """
 
         # Verify image integrity (we use the verified values from this point on)
@@ -667,10 +706,9 @@ class RegistryV2:
         LOGGER.debug("Signature check passed.")
 
         return RegistryV2VerifyImageSignatures(
-            compressed_layer_files=data.compressed_layer_files,
             image_config=data.image_config,
+            layer_files=data.layer_files,
             manifest=data.manifest,
             manifest_list=data.manifest_list,
             signatures=signatures,
-            uncompressed_layer_files=data.uncompressed_layer_files,
         )

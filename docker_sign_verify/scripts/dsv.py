@@ -124,8 +124,7 @@ async def copy(context: Context, image_name_dest: ImageName, image_name_src: Ima
         await ctx.registryv2.put_image(
             image_config=result.image_config,
             image_name=image_name_dest,
-            # TODO: Select compressed_layer_files vs uncompressed_layer_files based on type(registryv2).
-            layer_files=result.compressed_layer_files,
+            layer_files=result.layer_files,
             manifest=result.manifest,
             manifest_list=result.manifest_list,
         )

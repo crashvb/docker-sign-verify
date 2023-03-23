@@ -244,13 +244,13 @@ async def test_put_image(
     await registry_v2_image_source_proxy.put_image(
         image_config=response.image_config,
         image_name=image_name,
-        layer_files=response.compressed_layer_files,
+        layer_files=response.layer_files,
         manifest=response.manifest,
         manifest_list=response.manifest_list,
     )
 
-    for file in response.compressed_layer_files + response.uncompressed_layer_files:
-        file.close()
+    for layer_file in response.layer_files:
+        layer_file.close()
 
 
 @pytest.mark.online_modification
@@ -360,11 +360,8 @@ async def test_sign_image_same_image_source(
     )
     assertions(response)
 
-    for file in (
-        response.verify_image_data.compressed_layer_files
-        + response.verify_image_data.uncompressed_layer_files
-    ):
-        file.close()
+    for layer_file in response.verify_image_data.layer_files:
+        layer_file.close()
 
     # TODO: Test signing image twice (with same key, with different keys ...)
     #       Can we do this here (using dockerhub), or do we need to do this in test_imageconfig.py???
@@ -389,9 +386,7 @@ async def test_verify_image_integrity(
         manifest = result.manifest
         assert manifest
 
-        assert len(result.compressed_layer_files) == len(
-            result.uncompressed_layer_files
-        )
+        assert result.layer_files
 
     # 1. Unsigned
     response = await registry_v2_image_source_proxy.verify_image_integrity(
@@ -399,8 +394,8 @@ async def test_verify_image_integrity(
     )
     assertions(response)
 
-    for file in response.compressed_layer_files + response.uncompressed_layer_files:
-        file.close()
+    for layer_file in response.layer_files:
+        layer_file.close()
 
     # TODO: Test integrity on a signed image ...
     #       Can we do this here (using dockerhub), or do we need to do this in test_imageconfig.py???

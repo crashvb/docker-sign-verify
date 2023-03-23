@@ -64,6 +64,19 @@ async def chunk_file(
     return UtilChunkFile(digest=FormattedSHA256(hasher.hexdigest()), size=size)
 
 
+def is_layer_compressed(media_type: str):
+    """
+    Determines if a layer is compressed based on a given media type.
+
+    Args:
+        media_type: The media type used to make the determination.
+
+    Returns:
+        True if the layer is compressed, False otherwise.
+    """
+    return any(_type in media_type for _type in ["gzip", "zstd"])
+
+
 def xellipsis(string: str) -> str:
     """
     Reduces the length of a given string, if it is wider than the terminal width, inserting str_ellipsis.
