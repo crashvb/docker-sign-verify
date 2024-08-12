@@ -1,4 +1,4 @@
-#!/usr/bin/make -f
+#!/usr/bin/env make --file
 
 include makefile.config
 -include makefile.config.local
