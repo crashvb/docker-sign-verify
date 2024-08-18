@@ -344,9 +344,11 @@ class RegistryV2:
             compressed = is_layer_compressed(media_type=layer["mediaType"])
             await self.put_image_layer_from_disk(
                 digest_expected=layer_digest,
-                file=layer_files[i].layer_file_compressed
-                if compressed
-                else layer_files[i].layer_file_uncompressed,
+                file=(
+                    layer_files[i].layer_file_compressed
+                    if compressed
+                    else layer_files[i].layer_file_uncompressed
+                ),
                 image_name=image_name,
                 **kwargs,
             )
@@ -470,13 +472,19 @@ class RegistryV2:
         """
         LOGGER.debug(
             "%s: %s ...",
-            "Endorsing"
-            if signature_type == SignatureTypes.ENDORSE
-            else "Signing"
-            if signature_type == SignatureTypes.SIGN
-            else "Resigning"
-            if signature_type == SignatureTypes.RESIGN
-            else "Signing (atomic)",
+            (
+                "Endorsing"
+                if signature_type == SignatureTypes.ENDORSE
+                else (
+                    "Signing"
+                    if signature_type == SignatureTypes.SIGN
+                    else (
+                        "Resigning"
+                        if signature_type == SignatureTypes.RESIGN
+                        else "Signing (atomic)"
+                    )
+                )
+            ),
             image_name_src.resolve_name(),
         )
 
@@ -607,9 +615,11 @@ class RegistryV2:
                             f"Unsupported compression for media type: {layer_media_type}"
                         )
                 must_be_equal(
-                    actual=data_layer_file1.digest
-                    if compressed
-                    else data_layer_file0.digest,
+                    actual=(
+                        data_layer_file1.digest
+                        if compressed
+                        else data_layer_file0.digest
+                    ),
                     expected=data.image_layers[i],
                     msg=f"Image layer[{i}] digest mismatch",
                 )
@@ -618,9 +628,9 @@ class RegistryV2:
                     RegistryV2LayerFiles(
                         layer_digest=layer_digest,
                         layer_file_compressed=layer_file0 if compressed else None,
-                        layer_file_uncompressed=layer_file1
-                        if compressed
-                        else layer_file0,
+                        layer_file_uncompressed=(
+                            layer_file1 if compressed else layer_file0
+                        ),
                         layer_media_type=layer_media_type,
                     )
                 )

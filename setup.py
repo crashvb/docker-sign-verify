@@ -55,7 +55,7 @@ setup(
     },
     include_package_data=True,
     install_requires=[
-        "aiofiles",
+        "aiofiles<23.2.0",
         "aiohttp",
         "aiotempfile",
         "canonicaljson",

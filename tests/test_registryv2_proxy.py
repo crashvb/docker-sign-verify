@@ -102,9 +102,9 @@ async def registry_v2_image_source_proxy(
             await registry_v2_image_source_proxy.docker_registry_client_async.add_credentials(
                 credentials=credentials, endpoint=name
             )
-        registry_v2_image_source_proxy.docker_registry_client_async.proxies[
-            "https"
-        ] = f"https://{squid_secure.endpoint}/"
+        registry_v2_image_source_proxy.docker_registry_client_async.proxies["https"] = (
+            f"https://{squid_secure.endpoint}/"
+        )
         registry_v2_image_source_proxy.docker_registry_client_async.proxy_auth = (
             BasicAuth(login=squid_secure.username, password=squid_secure.password)
         )

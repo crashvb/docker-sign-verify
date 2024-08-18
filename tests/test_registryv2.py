@@ -121,7 +121,9 @@ async def replicate_manifest_lists(docker_registry_secure: DockerRegistrySecure)
                 image_name.image
             )
             auth_header_src = await docker_registry_client_async._get_request_headers(
-                image_name=image_name, scope=scope
+                image_name=image_name,
+                protocol=DockerRegistryClientAsync.DEFAULT_PROTOCOL,
+                scope=scope,
             )
             if not auth_header_src:
                 LOGGER.warning(
